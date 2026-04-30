@@ -1,0 +1,58 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "deneb-rs",
+  "colors": {
+    "primary": "#0ea5e9",
+    "light": "#38bdf8",
+    "dark": "#0284c7"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "groups": [
+      {
+        "group": "概览",
+        "pages": [
+          "introduction"
+        ]
+      },
+      {
+        "group": "架构",
+        "pages": [
+          "architecture"
+        ]
+      },
+      {
+        "group": "图表类型",
+        "pages": [
+          "line-chart",
+          "bar-chart",
+          "scatter-chart",
+          "area-chart"
+        ]
+      },
+      {
+        "group": "集成",
+        "pages": [
+          "webassembly"
+        ]
+      },
+      {
+        "group": "演示",
+        "pages": [
+          "demo"
+        ]
+      }
+    ]
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/linktime/deneb-rs"
+    }
+  }
+}

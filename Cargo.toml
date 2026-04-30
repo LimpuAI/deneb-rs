@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/deneb-core",
+    "crates/deneb-component",
+    "crates/deneb-wit",
+    "crates/deneb-wit-wasm",
+    "crates/deneb-demo",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["linktime <fankong>"]
+license = "MIT"
+repository = "https://github.com/linktime/deneb-rs"
+
+[workspace.dependencies]
+# Core dependencies
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false }
+
+# Data format dependencies (optional in individual crates)
+arrow = { version = "54", default-features = false, features = ["ipc"] }
+parquet = { version = "54", default-features = false, features = ["arrow"] }

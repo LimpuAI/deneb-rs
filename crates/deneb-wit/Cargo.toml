@@ -1,0 +1,21 @@
+[package]
+name = "deneb-wit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+deneb-core = { path = "../deneb-core" }
+deneb-component = { path = "../deneb-component" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.22"
+
+[features]
+default = ["csv", "json", "arrow-format", "parquet-format"]
+csv = ["deneb-core/csv"]
+json = ["deneb-core/json"]
+arrow-format = ["deneb-core/arrow-format"]
+parquet-format = ["deneb-core/parquet-format"]

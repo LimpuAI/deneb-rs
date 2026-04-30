@@ -1,0 +1,22 @@
+[package]
+name = "deneb-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+bytes = { version = "1", optional = true }
+arrow = { version = "54", default-features = false, features = ["ipc"], optional = true }
+parquet = { version = "54", default-features = false, features = ["arrow"], optional = true }
+
+[features]
+default = ["csv", "json", "arrow-format", "parquet-format"]
+csv = []
+json = []
+arrow-format = ["dep:arrow"]
+parquet-format = ["dep:parquet", "dep:bytes", "arrow-format"]
