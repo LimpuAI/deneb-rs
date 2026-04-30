@@ -1,0 +1,13 @@
+[package]
+name = "deneb-component"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+deneb-core = { path = "../deneb-core" }
+
+[features]
+default = []

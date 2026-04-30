@@ -1,0 +1,79 @@
+/// deneb-viz WIT world definition
+package deneb:viz;
+
+interface data-parser {
+    record schema-field {
+        name: string,
+        data-type: string,
+    }
+
+    record data-table {
+        columns: list<schema-field>,
+        rows: list<list<field-value>>,
+    }
+
+    variant field-value {
+        numeric(f64),
+        text(string),
+        timestamp(f64),
+        boolean(bool),
+        null,
+    }
+
+    parse-csv: func(data: list<u8>) -> result<data-table, string>;
+    parse-json: func(data: list<u8>) -> result<data-table, string>;
+    parse-arrow: func(data: list<u8>) -> result<data-table, string>;
+    parse-parquet: func(data: list<u8>) -> result<data-table, string>;
+}
+
+interface chart-renderer {
+    record chart-spec {
+        mark: string,
+        x-field: string,
+        y-field: string,
+        color-field: option<string>,
+        width: f64,
+        height: f64,
+        title: option<string>,
+        theme: option<string>,
+    }
+
+    record draw-cmd {
+        cmd-type: string,
+        params: list<f64>,
+        fill: option<string>,
+        stroke: option<string>,
+        stroke-width: option<f64>,
+        text-content: option<string>,
+        group-depth: u32,
+    }
+
+    record hit-region {
+        index: u32,
+        series: option<u32>,
+        bounds-x: f64,
+        bounds-y: f64,
+        bounds-w: f64,
+        bounds-h: f64,
+    }
+
+    record layer {
+        kind: string,
+        dirty: bool,
+        z-index: u32,
+        commands: list<draw-cmd>,
+        hit-regions: list<hit-region>,
+    }
+
+    record render-result {
+        layers: list<layer>,
+    }
+
+    render: func(data: list<u8>, format: string, spec: chart-spec) -> result<render-result, string>;
+    hit-test: func(render-data: render-result, x: f64, y: f64, tolerance: f64) -> option<u32>;
+}
+
+world deneb-viz {
+    export data-parser;
+    export chart-renderer;
+}

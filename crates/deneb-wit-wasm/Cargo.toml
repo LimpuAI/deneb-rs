@@ -1,0 +1,13 @@
+[package]
+name = "deneb-wit-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+deneb-wit = { path = "../deneb-wit", default-features = false, features = ["csv", "json"] }
+wit-bindgen = "0.51"
+
+[lib]
+crate-type = ["cdylib"]

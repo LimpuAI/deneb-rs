@@ -1,0 +1,38 @@
+[package]
+name = "deneb-demo"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "demo-line"
+path = "src/bin/demo_line.rs"
+
+[[bin]]
+name = "demo-bar"
+path = "src/bin/demo_bar.rs"
+
+[[bin]]
+name = "demo-scatter"
+path = "src/bin/demo_scatter.rs"
+
+[[bin]]
+name = "demo-area"
+path = "src/bin/demo_area.rs"
+
+[dependencies]
+deneb-core = { path = "../deneb-core", features = ["csv", "json"] }
+deneb-component = { path = "../deneb-component" }
+deneb-wit = { path = "../deneb-wit", default-features = false, features = ["csv", "json"] }
+
+tiny-skia = "0.12"
+fontdue = "0.9"
+softbuffer = "0.4"
+raw-window-handle = "0.6"
+
+wasmtime = "44"
+wasmtime-wasi = "44"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+winit = "0.30"
