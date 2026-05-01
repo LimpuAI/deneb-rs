@@ -1,0 +1,11 @@
+package limpuai:data;
+
+interface arrow-parser {
+    use types.{data-table};
+
+    parse: func(data: list<u8>) -> result<data-table, string>;
+}
+
+world arrow-ipc {
+    export arrow-parser;
+}

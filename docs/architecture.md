@@ -264,9 +264,14 @@ flowchart LR
         bindgen[host bindgen!]
     end
 
-    subgraph Component
+    subgraph Component["deneb-viz Component"]
         guest[wit-bindgen generate!]
         impl[DenebVizComponent]
+    end
+
+    subgraph Parsers["limpuai:data Components"]
+        arrow[arrow-parser]
+        parquet[parquet-parser]
     end
 
     subgraph deneb-wit
@@ -277,7 +282,9 @@ flowchart LR
     wasmtime -->|WIT ABI| guest
     bindgen -->|类型安全调用| wasmtime
     guest --> impl
-    impl --> lib_mode
+    impl -->|arrow/parquet 委托| arrow
+    impl -->|arrow/parquet 委托| parquet
+    impl -->|csv/json| lib_mode
     lib_mode --> convert
     convert --> deneb-core
 ```
@@ -288,8 +295,8 @@ flowchart LR
 |------|------|------|
 | `data-parser` | `parse-csv` | 解析 CSV 数据 |
 | `data-parser` | `parse-json` | 解析 JSON 数据 |
-| `data-parser` | `parse-arrow` | 解析 Arrow IPC（WASM 中不可用） |
-| `data-parser` | `parse-parquet` | 解析 Parquet（WASM 中不可用） |
+| `data-parser` | `parse-arrow` | 解析 Arrow IPC（委托 limpuai:data/arrow-parser） |
+| `data-parser` | `parse-parquet` | 解析 Parquet（委托 limpuai:data/parquet-parser） |
 | `chart-renderer` | `render` | 渲染图表 |
 | `chart-renderer` | `hit-test` | 命中测试 |
 
@@ -313,7 +320,8 @@ flowchart LR
     core[deneb-core<br/>serde · chrono] --> comp[deneb-component]
     core --> wit[deneb-wit<br/>base64]
     comp --> wit
-    wit --> witwasm[deneb-wit-wasm<br/>wit-bindgen]
+    wit --> witwasm[deneb-wit-wasm<br/>wit-bindgen 0.57]
+    limpuai["limpuai:data<br/>wit/deps/limpuai-data/"] -.->|WIT import| witwasm
 
     comp --> demo[deneb-demo<br/>tiny-skia · fontdue<br/>winit · wasmtime]
     wit --> demo
@@ -328,7 +336,7 @@ flowchart LR
 | `fontdue` | 文本栅格化 | demo |
 | `winit` + `softbuffer` | 窗口管理 | demo |
 | `wasmtime` | WASM 运行时 | demo |
-| `wit-bindgen` | WIT 绑定生成 | wit-wasm |
+| `wit-bindgen` 0.57 | WIT 绑定生成 | wit-wasm |
 
 ## 设计决策
 

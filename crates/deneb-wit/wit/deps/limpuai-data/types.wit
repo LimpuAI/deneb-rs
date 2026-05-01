@@ -1,0 +1,21 @@
+package limpuai:data;
+
+interface types {
+    record schema-field {
+        name: string,
+        data-type: string,
+    }
+
+    record data-table {
+        columns: list<schema-field>,
+        rows: list<list<field-value>>,
+    }
+
+    variant field-value {
+        numeric(f64),
+        text(string),
+        timestamp(f64),
+        boolean(bool),
+        null,
+    }
+}

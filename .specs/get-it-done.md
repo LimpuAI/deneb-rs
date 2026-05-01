@@ -49,3 +49,27 @@
 **解决方案**：正确宏为 `export!(ComponentStruct)`。Guest traits 在 `exports::deneb::viz::data_parser::Guest` 和 `exports::deneb::viz::chart_renderer::Guest` 命名空间下。
 
 **解决日期**：2026-04-29
+
+## Resolved: wasmtime 44 嵌套实例导出访问
+
+**原始问题**：wasmtime 44 的 `Instance` 没有 `get_instance` 方法。解析器 .wasm 组件的 `parse` 函数在嵌套实例导出内，无法通过 `instance.get_func(store, "parse")` 直接获取。
+
+**解决方案**：使用 `get_export_index` 两步导航：先获取嵌套实例索引，再获取函数索引，最后 `get_func`。
+
+**解决日期**：2026-05-01
+
+## Resolved: Bar chart category 标签在 WASM 模式下缺失
+
+**原始问题**：WASM 路径下 bar chart 的 x 轴 category 标签不显示。根因是 `wit_chart_spec_to_chart_spec` 将所有字段硬编码为 `Field::quantitative()`。
+
+**解决方案**：新增 `wit_chart_spec_with_table()` 从 DataTable 列 DataType 推断 Field 编码。
+
+**解决日期**：2026-05-01
+
+## Resolved: Arrow 物理类型与 deneb 语义类型不匹配
+
+**原始问题**：limpuai:data 解析器返回 Arrow 物理类型名（`Int64`），deneb 期望语义类型（`quantitative`），导致 render 失败。
+
+**解决方案**：添加 `arrow_type_to_semantic()` 映射函数，在类型转换时执行映射。
+
+**解决日期**：2026-05-01

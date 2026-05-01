@@ -2,21 +2,19 @@
 
 use deneb_component::{ChartSpec, DefaultTheme, Encoding, Field, LineChart, Mark};
 use deneb_core::parser::csv::parse_csv;
-use deneb_demo::{sample_data, DemoApp, TinySkiaRenderer};
-use deneb_demo::wasm_host::WasmHost;
+use deneb_demo::{sample_data, DemoApp, TinySkiaRenderer, parse_wasm_args};
+use deneb_demo::wasm_host::{ParserPaths, WasmHost};
 use deneb_wit::wit_types::WitChartSpec;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let csv = sample_data::line_chart_csv();
-    let args: Vec<String> = std::env::args().collect();
 
-    // 检查 --wasm <path> 参数
-    let wasm_path = args.windows(2)
-        .find(|w| w[0] == "--wasm")
-        .map(|w| w[1].clone());
-
-    if let Some(path) = wasm_path {
-        run_wasm(&path, csv.as_bytes())?;
+    if let Some(args) = parse_wasm_args() {
+        let parsers = args.deps_dir.as_deref()
+            .map(ParserPaths::from_dir)
+            .unwrap_or_default();
+        let mut host = WasmHost::from_file_with_parsers(&args.wasm_path, parsers)?;
+        run_wasm(&mut host, csv.as_bytes())?;
     } else {
         run_direct(csv)?;
     }
@@ -49,9 +47,7 @@ fn run_direct(csv: &str) -> Result<(), Box<dyn std::error::Error>> {
     app.run(renderer.pixmap().clone())
 }
 
-fn run_wasm(wasm_path: &str, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    let mut host = WasmHost::from_file(wasm_path)?;
-
+fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let wit_spec = WitChartSpec {
         mark: "line".to_string(),
         x_field: "x".to_string(),

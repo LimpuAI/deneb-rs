@@ -7,7 +7,7 @@ license.workspace = true
 
 [dependencies]
 deneb-wit = { path = "../deneb-wit", default-features = false, features = ["csv", "json"] }
-wit-bindgen = "0.51"
+wit-bindgen = "0.57"
 
 [lib]
 crate-type = ["cdylib"]

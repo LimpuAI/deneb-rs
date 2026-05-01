@@ -74,6 +74,9 @@ interface chart-renderer {
 }
 
 world deneb-viz {
+    import limpuai:data/arrow-parser;
+    import limpuai:data/parquet-parser;
+
     export data-parser;
     export chart-renderer;
 }

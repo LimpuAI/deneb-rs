@@ -232,11 +232,31 @@ pub mod convert {
 
     /// WIT 图表规格转换为内部图表规格
     pub fn wit_chart_spec_to_chart_spec(wit_spec: WitChartSpec) -> Result<ChartSpec, ConvertError> {
+        wit_chart_spec_with_table(&wit_spec, &deneb_core::DataTable::new())
+    }
+
+    /// 从数据表的列类型推断字段编码类型
+    pub fn wit_chart_spec_with_table(
+        wit_spec: &WitChartSpec,
+        table: &deneb_core::DataTable,
+    ) -> Result<ChartSpec, ConvertError> {
         let mark = str_to_mark(&wit_spec.mark)?;
 
-        // 从数据类型推断，这里默认使用定量类型
-        let x_field = Field::quantitative(&wit_spec.x_field);
-        let y_field = Field::quantitative(&wit_spec.y_field);
+        let x_field = table.get_column(&wit_spec.x_field)
+            .map(|col| match col.data_type {
+                deneb_core::DataType::Nominal | deneb_core::DataType::Ordinal => Field::nominal(&wit_spec.x_field),
+                deneb_core::DataType::Temporal => Field::temporal(&wit_spec.x_field),
+                _ => Field::quantitative(&wit_spec.x_field),
+            })
+            .unwrap_or_else(|| Field::quantitative(&wit_spec.x_field));
+
+        let y_field = table.get_column(&wit_spec.y_field)
+            .map(|col| match col.data_type {
+                deneb_core::DataType::Nominal | deneb_core::DataType::Ordinal => Field::nominal(&wit_spec.y_field),
+                deneb_core::DataType::Temporal => Field::temporal(&wit_spec.y_field),
+                _ => Field::quantitative(&wit_spec.y_field),
+            })
+            .unwrap_or_else(|| Field::quantitative(&wit_spec.y_field));
 
         let mut encoding = Encoding::new()
             .x(x_field)
@@ -489,19 +509,12 @@ pub mod lib_mode {
         Ok(data_table_to_wit_data_table(&table))
     }
 
-    /// 渲染图表
-    pub fn render(data: &[u8], format: &str, spec: WitChartSpec) -> Result<WitRenderResult, String> {
-        // 1. 解析数据
-        let wit_table = parse_data(data, format)?;
+    /// 使用预解析的 WitDataTable 渲染图表
+    pub fn render_from_wit_table(wit_table: WitDataTable, spec: WitChartSpec) -> Result<WitRenderResult, String> {
         let table = wit_data_table_to_data_table(wit_table).map_err(|e| e.to_string())?;
+        let chart_spec = wit_chart_spec_with_table(&spec, &table).map_err(|e| e.to_string())?;
 
-        // 2. 转换图表规格
-        let chart_spec = wit_chart_spec_to_chart_spec(spec).map_err(|e| e.to_string())?;
-
-        // 3. 使用默认主题
         let theme = deneb_component::DefaultTheme;
-
-        // 4. 根据 mark 类型分派到不同的图表渲染器
         let output = match chart_spec.mark {
             deneb_component::Mark::Line => {
                 deneb_component::LineChart::render(&chart_spec, &theme, &table)
@@ -521,8 +534,13 @@ pub mod lib_mode {
             }
         };
 
-        // 5. 转换为 WIT 渲染结果
         Ok(chart_output_to_wit_render_result(output))
+    }
+
+    /// 渲染图表
+    pub fn render(data: &[u8], format: &str, spec: WitChartSpec) -> Result<WitRenderResult, String> {
+        let wit_table = parse_data(data, format)?;
+        render_from_wit_table(wit_table, spec)
     }
 
     /// 命中测试
