@@ -22,9 +22,9 @@ name = "demo-area"
 path = "src/bin/demo_area.rs"
 
 [dependencies]
-deneb-core = { path = "../deneb-core", features = ["csv", "json"] }
+deneb-core = { path = "../deneb-core", features = ["csv", "json", "arrow-format", "parquet-format"] }
 deneb-component = { path = "../deneb-component" }
-deneb-wit = { path = "../deneb-wit", default-features = false, features = ["csv", "json"] }
+deneb-wit = { path = "../deneb-wit", default-features = false, features = ["csv", "json", "arrow-format", "parquet-format"] }
 
 tiny-skia = "0.12"
 fontdue = "0.9"
@@ -33,6 +33,9 @@ raw-window-handle = "0.6"
 
 wasmtime = "44"
 wasmtime-wasi = "44"
+
+arrow = { version = "54", default-features = false, features = ["ipc"] }
+parquet = { version = "54", default-features = false, features = ["arrow"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 winit = "0.30"

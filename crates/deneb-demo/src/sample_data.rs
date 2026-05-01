@@ -1,23 +1,83 @@
 //! 演示数据
 //!
-//! 为 4 种图表类型提供硬编码的 CSV 数据。
+//! 为 4 种图表类型提供 CSV 和 Parquet 格式的测试数据。
 
-/// 折线图演示数据（时间序列）
+/// 折线图演示数据（时间序列，CSV）
 pub fn line_chart_csv() -> &'static str {
     "x,y\n0,10\n1,25\n2,18\n3,32\n4,28\n5,45\n6,38\n7,52\n8,48\n9,55\n10,42\n11,60\n12,35\n13,50\n14,65\n15,58\n16,70\n17,45\n18,62\n19,75"
 }
 
-/// 柱状图演示数据（分类数据）
+/// 柱状图演示数据（分类数据，CSV）
 pub fn bar_chart_csv() -> &'static str {
     "category,value\nElectronics,450\nClothing,320\nFood,280\nBooks,190\nSports,350\nMusic,210"
 }
 
-/// 散点图演示数据（两组聚类）
-pub fn scatter_chart_csv() -> &'static str {
-    "x,y,group\n1.2,3.4,A\n1.8,4.1,A\n2.1,3.8,A\n1.5,4.5,A\n2.5,3.2,A\n1.9,3.9,A\n2.3,4.3,A\n1.7,3.6,A\n5.5,7.2,B\n6.1,6.8,B\n5.8,7.5,B\n6.5,7.1,B\n5.2,6.5,B\n6.8,7.8,B\n5.9,6.9,B\n6.3,7.4,B\n3.5,5.2,A\n3.8,5.8,B\n2.8,4.2,A\n4.2,6.1,B"
+/// 散点图演示数据（两组聚类，Parquet）
+pub fn scatter_chart_parquet() -> Vec<u8> {
+    use arrow::array::{Float64Array, StringArray};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use parquet::arrow::arrow_writer::ArrowWriter;
+
+    let schema = Schema::new(vec![
+        Field::new("x", DataType::Float64, false),
+        Field::new("y", DataType::Float64, false),
+        Field::new("group", DataType::Utf8, false),
+    ]);
+
+    let x = Float64Array::from(vec![
+        1.2, 1.8, 2.1, 1.5, 2.5, 1.9, 2.3, 1.7,
+        5.5, 6.1, 5.8, 6.5, 5.2, 6.8, 5.9, 6.3,
+        3.5, 3.8, 2.8, 4.2,
+    ]);
+    let y = Float64Array::from(vec![
+        3.4, 4.1, 3.8, 4.5, 3.2, 3.9, 4.3, 3.6,
+        7.2, 6.8, 7.5, 7.1, 6.5, 7.8, 6.9, 7.4,
+        5.2, 5.8, 4.2, 6.1,
+    ]);
+    let group = StringArray::from(vec![
+        "A", "A", "A", "A", "A", "A", "A", "A",
+        "B", "B", "B", "B", "B", "B", "B", "B",
+        "A", "B", "A", "B",
+    ]);
+
+    let batch = RecordBatch::try_new(
+        std::sync::Arc::new(schema),
+        vec![std::sync::Arc::new(x), std::sync::Arc::new(y), std::sync::Arc::new(group)],
+    ).unwrap();
+
+    let mut buf = Vec::new();
+    let mut writer = ArrowWriter::try_new(&mut buf, batch.schema().clone(), None).unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+    buf
 }
 
-/// 面积图演示数据（2 系列）
-pub fn area_chart_csv() -> &'static str {
-    "x,y1,y2\n0,20,10\n1,35,15\n2,28,22\n3,45,30\n4,38,25\n5,55,35\n6,48,40\n7,65,45\n8,58,38\n9,72,50\n10,62,42\n11,78,55"
+/// 面积图演示数据（2 系列，Parquet）
+pub fn area_chart_parquet() -> Vec<u8> {
+    use arrow::array::Int64Array;
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use parquet::arrow::arrow_writer::ArrowWriter;
+
+    let schema = Schema::new(vec![
+        Field::new("x", DataType::Int64, false),
+        Field::new("y1", DataType::Int64, false),
+        Field::new("y2", DataType::Int64, false),
+    ]);
+
+    let x = Int64Array::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    let y1 = Int64Array::from(vec![20, 35, 28, 45, 38, 55, 48, 65, 58, 72, 62, 78]);
+    let y2 = Int64Array::from(vec![10, 15, 22, 30, 25, 35, 40, 45, 38, 50, 42, 55]);
+
+    let batch = RecordBatch::try_new(
+        std::sync::Arc::new(schema),
+        vec![std::sync::Arc::new(x), std::sync::Arc::new(y1), std::sync::Arc::new(y2)],
+    ).unwrap();
+
+    let mut buf = Vec::new();
+    let mut writer = ArrowWriter::try_new(&mut buf, batch.schema().clone(), None).unwrap();
+    writer.write(&batch).unwrap();
+    writer.close().unwrap();
+    buf
 }

@@ -13,12 +13,18 @@ flowchart TB
         ren[TinySkiaRenderer<br/>像素渲染]
     end
 
-    subgraph Component["WASI Component"]
+    subgraph Component["deneb-viz Component"]
         direction TB
         wb[wit-bindgen 生成层]
         dp[DataParser impl]
         cr[ChartRenderer impl]
         lib[lib_mode API]
+    end
+
+    subgraph Parsers["limpuai:data Components"]
+        direction TB
+        ap[arrow-parser]
+        pp[parquet-parser]
     end
 
     subgraph Engine["渲染引擎"]
@@ -31,7 +37,9 @@ flowchart TB
     wh -->|WIT ABI| wb
     wb --> dp
     wb --> cr
-    dp --> lib
+    dp -->|csv/json| lib
+    dp -->|arrow| ap
+    dp -->|parquet| pp
     cr --> lib
     lib --> comp
     comp --> core
@@ -46,7 +54,7 @@ flowchart TB
 cargo build -p deneb-wit-wasm --target wasm32-wasip2 --release
 ```
 
-输出文件：`target/wasm32-wasip2/release/deneb_wit_wasm.wasm`（约 498KB）
+输出文件：`target/wasm32-wasip2/release/deneb_wit_wasm.wasm`（约 519KB）
 
 编译产物是标准 WASI Component Model 格式，可直接被 wasmtime、Wasmtime Runtime 等支持 Component Model 的运行时加载。
 
@@ -56,10 +64,11 @@ cargo build -p deneb-wit-wasm --target wasm32-wasip2 --release
 |------|-----|
 | Target | `wasm32-wasip2` |
 | Crate type | `cdylib` |
-| wit-bindgen | 0.51 |
+| wit-bindgen | 0.57 |
 | 启用的 features | `csv`, `json` |
+| 外部 WIT 依赖 | `wit/deps/limpuai-data/` |
 
-Arrow 和 Parquet 格式在 WASM 中不可用，因为底层依赖不兼容 `wasm32` 目标。
+Arrow 和 Parquet 格式通过导入 `limpuai:data` 外部解析器组件实现支持，deneb-viz 在运行时动态链接这些组件。
 
 ## WIT 接口
 
@@ -81,28 +90,56 @@ classDiagram
 
     class World_deneb_viz {
         <<world>>
+        import ArrowParser
+        import ParquetParser
         export DataParser
         export ChartRenderer
     }
 
+    class ArrowParser {
+        <<interface>>
+        +parse(data: list~u8~) result~DataTable, string~
+    }
+
+    class ParquetParser {
+        <<interface>>
+        +parse(data: list~u8~) result~DataTable, string~
+    }
+
     World_deneb_viz --> DataParser : export
     World_deneb_viz --> ChartRenderer : export
+    World_deneb_viz --> ArrowParser : import
+    World_deneb_viz --> ParquetParser : import
+    DataParser ..> ArrowParser : 委托 parse-arrow
+    DataParser ..> ParquetParser : 委托 parse-parquet
 ```
 
 ## 宿主端使用
 
 ### 初始化
 
-```rust
-use deneb_demo::wasm_host::WasmHost;
+deneb-viz 通过 WIT `import` 声明依赖 `limpuai:data/arrow-parser` 和 `limpuai:data/parquet-parser`。宿主在实例化时需要将这些解析器组件链接到 deneb-viz：
 
+```rust
+use deneb_demo::wasm_host::{ParserPaths, WasmHost};
+
+// 仅使用 csv/json 时（无需外部组件）
 let mut host = WasmHost::from_file("deneb_wit_wasm.wasm")?;
+
+// 需要 Arrow/Parquet 支持 — 指定解析器组件目录
+let mut host = WasmHost::from_file_with_parsers(
+    "deneb_wit_wasm.wasm",
+    ParserPaths::from_dir("../limpuai-wit/target/wasm32-wasip2/release"),
+)?;
 ```
+
+`ParserPaths::from_dir` 按文件名约定自动发现 `limpuai_wit_arrow.wasm` 和 `limpuai_wit_parquet.wasm`。找到则链接，未找到则注册 stub。
 
 ### 数据解析
 
 ```rust
 let table = host.parse_csv(b"x,y\n1,10\n2,20\n3,15")?;
+let table = host.parse_parquet(&parquet_bytes)?;  // 需要 --deps 提供 parquet 解析器
 ```
 
 ### 图表渲染
@@ -149,18 +186,34 @@ if let Some(region_index) = hit {
 sequenceDiagram
     participant App as 宿主应用
     participant Host as WasmHost
-    participant Comp as WASM Component
+    participant Comp as deneb-viz Component
+    participant Parsers as limpuai:data Components
     participant Core as deneb-core/component
 
-    App->>Host: render(data, "csv", spec)
+    App->>Host: render(data, "parquet", spec)
     Host->>Host: wit_to_bg_chart_spec(spec)
 
     rect rgb(240, 248, 255)
         Note over Host,Core: WIT ABI 边界
         Host->>Comp: call_render(data, format, bg_spec)
-        Comp->>Comp: bg_to_wit_data_table (parse_csv)
-        Comp->>Core: lib_mode::render()
-        Core->>Core: parse → ChartSpec → Chart::render
+
+        alt csv/json 格式
+            Comp->>Comp: lib_mode::parse_data()
+        else arrow 格式
+            Comp->>Parsers: arrow-parser::parse(data)
+            Parsers-->>Comp: LimpuDataTable
+            Comp->>Comp: limpuai_dt_to_wit()
+            Note over Comp: arrow_type_to_semantic() 映射
+        else parquet 格式
+            Comp->>Parsers: parquet-parser::parse(data)
+            Parsers-->>Comp: LimpuDataTable
+            Comp->>Comp: limpuai_dt_to_wit()
+            Note over Comp: arrow_type_to_semantic() 映射
+        end
+
+        Comp->>Core: lib_mode::render_from_wit_table()
+        Note over Core: wit_chart_spec_with_table() 从 DataTable 推断字段类型
+        Core->>Core: ChartSpec → Chart::render
         Core-->>Comp: ChartOutput
         Comp->>Comp: chart_output_to_wit_render_result
         Comp->>Comp: draw_cmd_to_wit_draw_cmd_flat (展平)
@@ -222,19 +275,51 @@ params 数组中按类型前缀拼接：
 └─────────────┘
 ```
 
+### Arrow 物理类型映射
+
+limpuai:data 解析器返回 Arrow 物理类型名（`Int64`, `Float64`, `Utf8`），deneb-wit-wasm 通过 `arrow_type_to_semantic()` 映射为 deneb 语义类型：
+
+| Arrow 物理类型 | deneb 语义类型 |
+|---------------|---------------|
+| `Int8`, `Int16`, `Int32`, `Int64`, `UInt8`–`UInt64`, `Float16`–`Float64`, `Decimal128/256` | `quantitative` |
+| `Date32`, `Date64`, `Timestamp`, `Time32`, `Time64`, `Duration` | `temporal` |
+| `Utf8`, `LargeUtf8`, `Binary`, `LargeBinary`, `Boolean` | `nominal` |
+
+### 字段类型推断
+
+`WitChartSpec` 只传字段名，不传类型。`wit_chart_spec_with_table()` 从 `DataTable` 的列类型推断 `Field` 编码：
+
+| 列 DataType | Field 编码 |
+|------------|-----------|
+| `Nominal`, `Ordinal` | `Field::nominal()` |
+| `Temporal` | `Field::temporal()` |
+| `Quantitative` | `Field::quantitative()` |
+
 ## Demo 演示
 
-四个 demo binary 都支持 `--wasm` 参数切换到 WASM 渲染路径：
+```mermaid
+flowchart LR
+    subgraph CSV_Demos["CSV 格式"]
+        line[demo-line]
+        bar[demo-bar]
+    end
+
+    subgraph Parquet_Demos["Parquet 格式"]
+        scatter[demo-scatter]
+        area[demo-area]
+    end
+```
 
 ```bash
-# Native 渲染
-cargo run --bin demo-line
-
-# WASM 渲染
+# CSV 格式（无需 --deps）
 cargo run --bin demo-line -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
-
-# 同样适用于其他图表
 cargo run --bin demo-bar -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
-cargo run --bin demo-scatter -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
-cargo run --bin demo-area -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
+
+# Parquet 格式（需要 --deps）
+cargo run --bin demo-scatter -- \
+  --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm \
+  --deps ../limpuai-wit/target/wasm32-wasip2/release
+cargo run --bin demo-area -- \
+  --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm \
+  --deps ../limpuai-wit/target/wasm32-wasip2/release
 ```

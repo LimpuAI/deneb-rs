@@ -22,12 +22,24 @@ cargo run --bin demo-area
 # 1. 编译 WASI Component
 cargo build -p deneb-wit-wasm --target wasm32-wasip2 --release
 
-# 2. 使用 WASM 路径运行
+# 2. 使用 WASM 路径运行（CSV/JSON 格式，无需外部解析器）
 cargo run --bin demo-line -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
 cargo run --bin demo-bar -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
-cargo run --bin demo-scatter -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
-cargo run --bin demo-area -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
+
+# 3. Parquet 格式需要 --deps 指定解析器组件目录
+cargo run --bin demo-scatter -- \
+  --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm \
+  --deps ../limpuai-wit/target/wasm32-wasip2/release
+cargo run --bin demo-area -- \
+  --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm \
+  --deps ../limpuai-wit/target/wasm32-wasip2/release
 ```
+
+`--deps <dir>` 按文件名约定自动发现解析器组件：
+- `limpuai_wit_arrow.wasm` → Arrow IPC 解析器
+- `limpuai_wit_parquet.wasm` → Parquet 解析器
+
+找到则链接，未找到则注册 stub（调用时返回错误）。
 
 ## 双路径架构
 
@@ -35,16 +47,18 @@ cargo run --bin demo-area -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.
 flowchart TB
     subgraph Native["Native Path"]
         direction TB
-        csv1[CSV 数据] --> parser1[parse_csv]
+        data1[CSV / Parquet 数据] --> parser1[parse_csv / parse_parquet]
         parser1 --> spec1[ChartSpec + Theme]
-        spec1 --> chart1[LineChart::render]
+        spec1 --> chart1[Chart::render]
         chart1 --> output1[ChartOutput<br/>DrawCmd]
     end
 
     subgraph WASM["WASM Path"]
         direction TB
-        csv2[CSV 数据] --> host[WasmHost]
+        data2[CSV / Parquet 数据] --> host[WasmHost]
         host -->|WIT ABI| comp[WASI Component]
+        comp -->|arrow/parquet 委托| parsers[limpuai:data 解析器]
+        parsers --> comp
         comp --> output2[WitRenderResult<br/>WitDrawCmd]
     end
 
@@ -55,32 +69,45 @@ flowchart TB
 
 两条路径产生视觉一致的输出。Native 路径使用完整 `DrawCmd` 枚举（无损），WASM 路径使用展平的 `WitDrawCmd`（跨 WASM 边界的编码格式）。
 
-## 演示数据
+## 数据格式
 
-每种图表使用内置的 CSV 示例数据：
+```mermaid
+flowchart LR
+    subgraph CSV_JSON["CSV / JSON（demo-line, demo-bar）"]
+        csv["CSV 字符串"]
+    end
 
-| 图表 | 数据特征 | 字段 |
-|------|---------|------|
-| Line | 20 点时间序列 | x（连续）, y（连续） |
-| Bar | 6 个类别 | category（离散）, value（连续） |
-| Scatter | 两组聚类（A/B），20 点 | x, y, group |
-| Area | 2 系列，12 点 | x, y1, y2 |
+    subgraph Parquet["Parquet（demo-scatter, demo-area）"]
+        pq["Parquet 字节<br/>arrow crate 生成"]
+    end
+
+    csv --> native1[Native: parse_csv]
+    csv --> wasm1[WASM: lib_mode::parse_data]
+    pq --> native2[Native: parse_parquet]
+    pq --> wasm2[WASM: limpuai:data/parquet-parser]
+```
+
+| 图表 | 数据格式 | 数据特征 | 字段 |
+|------|---------|---------|------|
+| Line | CSV | 20 点时间序列 | x（连续）, y（连续） |
+| Bar | CSV | 6 个类别 | category（离散）, value（连续） |
+| Scatter | Parquet | 两组聚类（A/B），20 点 | x（Float64）, y（Float64）, group（Utf8） |
+| Area | Parquet | 2 系列，12 点 | x（Int64）, y1（Int64）, y2（Int64） |
 
 ## Demo 代码结构
 
-每个 demo binary 遵循相同模式：
+每个 demo binary 遵循相同模式，使用公共的 `parse_wasm_args()` 提取 CLI 参数：
 
 ```rust
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let csv = sample_data::line_chart_csv();
-    let args: Vec<String> = std::env::args().collect();
 
-    let wasm_path = args.windows(2)
-        .find(|w| w[0] == "--wasm")
-        .map(|w| w[1].clone());
-
-    if let Some(path) = wasm_path {
-        run_wasm(&path, csv.as_bytes())?;
+    if let Some(args) = parse_wasm_args() {
+        let parsers = args.deps_dir.as_deref()
+            .map(ParserPaths::from_dir)
+            .unwrap_or_default();
+        let mut host = WasmHost::from_file_with_parsers(&args.wasm_path, parsers)?;
+        run_wasm(&mut host, csv.as_bytes())?;
     } else {
         run_direct(csv)?;
     }
@@ -117,9 +144,7 @@ fn run_direct(csv: &str) -> Result<(), Box<dyn std::error::Error>> {
 ### WASM 路径
 
 ```rust
-fn run_wasm(wasm_path: &str, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    let mut host = WasmHost::from_file(wasm_path)?;
-
+fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let wit_spec = WitChartSpec {
         mark: "line".to_string(),
         x_field: "x".to_string(),

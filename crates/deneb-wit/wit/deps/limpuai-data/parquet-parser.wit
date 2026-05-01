@@ -1,0 +1,11 @@
+package limpuai:data;
+
+interface parquet-parser {
+    use types.{data-table};
+
+    parse: func(data: list<u8>) -> result<data-table, string>;
+}
+
+world parquet-file {
+    export parquet-parser;
+}
