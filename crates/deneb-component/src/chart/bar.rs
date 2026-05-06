@@ -120,10 +120,10 @@ impl BarChart {
     fn render_empty<T: Theme>(spec: &ChartSpec, theme: &T) -> ChartOutput {
         let mut layers = RenderLayers::new();
         let plot_area = PlotArea {
-            x: theme.padding().left,
-            y: theme.padding().top,
-            width: spec.width - theme.padding().horizontal(),
-            height: spec.height - theme.padding().vertical(),
+            x: theme.margin().left,
+            y: theme.margin().top,
+            width: spec.width - theme.margin().horizontal(),
+            height: spec.height - theme.margin().vertical(),
         };
 
         // 背景层
@@ -306,7 +306,7 @@ impl BarChart {
             y: 0.0,
             width: spec.width,
             height: spec.height,
-            fill: Some(FillStyle::Color(theme.background_color())),
+            fill: Some(FillStyle::Color(theme.background_color().to_string())),
             stroke: None,
             corner_radius: None,
         });
@@ -318,7 +318,7 @@ impl BarChart {
             width: plot_area.width,
             height: plot_area.height,
             fill: None,
-            stroke: Some(StrokeStyle::Color(theme.foreground_color())),
+            stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
             corner_radius: None,
         });
 
@@ -363,9 +363,6 @@ impl BarChart {
         let series_keys: Vec<_> = series_data.keys().cloned().collect();
         let series_count = series_keys.len();
 
-        // 获取调色板
-        let palette = theme.palette(series_count.max(1));
-
         // 计算基线位置（y=0 对应的像素位置）
         let baseline = y_scale.map(0.0);
 
@@ -376,13 +373,13 @@ impl BarChart {
                 }
             })?;
 
-            let color = if series_count > 1 {
-                palette.get(series_idx).cloned().unwrap_or_else(|| palette[0].clone())
-            } else {
-                palette.get(0).cloned().unwrap_or_else(|| "#1f77b4".to_string())
-            };
-
-            for (category, value, row_idx, row_data) in bars {
+            for (bar_idx, (category, value, row_idx, row_data)) in bars.iter().enumerate() {
+                // 多系列按系列分色，单系列按类别分色
+                let color = if series_count > 1 {
+                    theme.series_color(series_idx).to_string()
+                } else {
+                    theme.series_color(bar_idx).to_string()
+                };
                 // 计算柱子位置
                 let band_start = x_scale.band_start(category).ok_or_else(|| {
                     ComponentError::InvalidConfig {
@@ -467,7 +464,7 @@ impl BarChart {
             // 刻度和标签
             for (tick_pos, label) in x_axis.tick_positions.iter().zip(x_axis.tick_labels.iter()) {
                 // 刻度线
-                let tick_size = theme.tick_size();
+                let tick_size = theme.layout_config().tick_length;
                 output.add_command(DrawCmd::Path {
                     segments: vec![
                         PathSegment::MoveTo(*tick_pos, x_axis.position),
@@ -481,7 +478,7 @@ impl BarChart {
                 let text_style = TextStyle::new()
                     .with_font_size(theme.tick_font_size())
                     .with_font_family(theme.font_family())
-                    .with_fill(FillStyle::Color(theme.foreground_color()));
+                    .with_fill(FillStyle::Color(theme.foreground_color().to_string()));
 
                 output.add_command(DrawCmd::Text {
                     x: *tick_pos,
@@ -499,11 +496,11 @@ impl BarChart {
                 let label_style = TextStyle::new()
                     .with_font_size(theme.label_font_size())
                     .with_font_family(theme.font_family())
-                    .with_fill(FillStyle::Color(theme.foreground_color()));
+                    .with_fill(FillStyle::Color(theme.foreground_color().to_string()));
 
                 output.add_command(DrawCmd::Text {
                     x: plot_area.x + plot_area.width / 2.0,
-                    y: plot_area.y + plot_area.height + theme.padding().bottom - 5.0,
+                    y: plot_area.y + plot_area.height + theme.margin().bottom - 5.0,
                     content: title.clone(),
                     style: label_style,
                     anchor: TextAnchor::Middle,
@@ -525,7 +522,7 @@ impl BarChart {
             });
 
             // 刻度和标签
-            let tick_size = theme.tick_size();
+            let tick_size = theme.layout_config().tick_length;
             for (tick_pos, label) in y_axis.tick_positions.iter().zip(y_axis.tick_labels.iter()) {
                 // 刻度线
                 output.add_command(DrawCmd::Path {
@@ -541,7 +538,7 @@ impl BarChart {
                 let text_style = TextStyle::new()
                     .with_font_size(theme.tick_font_size())
                     .with_font_family(theme.font_family())
-                    .with_fill(FillStyle::Color(theme.foreground_color()));
+                    .with_fill(FillStyle::Color(theme.foreground_color().to_string()));
 
                 output.add_command(DrawCmd::Text {
                     x: y_axis.position - tick_size - 5.0,
@@ -559,10 +556,10 @@ impl BarChart {
                 let label_style = TextStyle::new()
                     .with_font_size(theme.label_font_size())
                     .with_font_family(theme.font_family())
-                    .with_fill(FillStyle::Color(theme.foreground_color()));
+                    .with_fill(FillStyle::Color(theme.foreground_color().to_string()));
 
                 output.add_command(DrawCmd::Text {
-                    x: plot_area.x - theme.padding().left + 5.0,
+                    x: plot_area.x - theme.margin().left + 5.0,
                     y: plot_area.y + plot_area.height / 2.0,
                     content: title.clone(),
                     style: label_style,
@@ -588,7 +585,7 @@ impl BarChart {
             .with_font_size(theme.title_font_size())
             .with_font_family(theme.font_family())
             .with_font_weight(FontWeight::Bold)
-            .with_fill(FillStyle::Color(theme.foreground_color()));
+            .with_fill(FillStyle::Color(theme.title_color().to_string()));
 
         output.add_command(DrawCmd::Text {
             x: plot_area.x + plot_area.width / 2.0,

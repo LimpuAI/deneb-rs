@@ -71,7 +71,7 @@ fn main() {
     println!("Dark Palette (5): {:?}", dark_theme.palette(5));
 
     // 示例 4: 边距计算
-    let padding = default_theme.padding();
+    let padding = default_theme.margin();
     println!("\n=== Layout ===");
     println!("Padding: top={}, right={}, bottom={}, left={}",
              padding.top, padding.right, padding.bottom, padding.left);

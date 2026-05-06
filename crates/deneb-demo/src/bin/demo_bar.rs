@@ -1,8 +1,12 @@
 //! 柱状图演示
 
-use deneb_component::{BarChart, ChartSpec, DefaultTheme, Encoding, Field, Mark};
+use deneb_component::{
+    BarChart, ChartSpec, DarkTheme, DefaultTheme, Encoding, Field, ForestTheme, Mark,
+    NordicTheme, CappuccinoTheme,
+};
 use deneb_core::parser::csv::parse_csv;
-use deneb_demo::{sample_data, DemoApp, TinySkiaRenderer, parse_wasm_args};
+use deneb_demo::{parse_theme_name, parse_wasm_args, render_and_show, sample_data, DemoApp,
+    TinySkiaRenderer};
 use deneb_demo::wasm_host::{ParserPaths, WasmHost};
 use deneb_wit::wit_types::WitChartSpec;
 
@@ -37,14 +41,14 @@ fn run_direct(csv: &str) -> Result<(), Box<dyn std::error::Error>> {
         .height(600.0)
         .build()?;
 
-    let theme = DefaultTheme;
-    let output = BarChart::render(&spec, &theme, &table)?;
-
-    let mut renderer = TinySkiaRenderer::new(800, 600)?;
-    renderer.render_layers(&output.layers);
-
-    let app = DemoApp::new("Deneb - Bar Chart", 800, 600);
-    app.run(renderer.pixmap().clone())
+    let theme_name = parse_theme_name();
+    match theme_name.as_deref() {
+        Some("dark") => render_and_show(DarkTheme, |t| BarChart::render(&spec, t, &table), "Deneb - Bar Chart"),
+        Some("forest") => render_and_show(ForestTheme, |t| BarChart::render(&spec, t, &table), "Deneb - Bar Chart"),
+        Some("nordic") => render_and_show(NordicTheme, |t| BarChart::render(&spec, t, &table), "Deneb - Bar Chart"),
+        Some("cappuccino") => render_and_show(CappuccinoTheme, |t| BarChart::render(&spec, t, &table), "Deneb - Bar Chart"),
+        _ => render_and_show(DefaultTheme, |t| BarChart::render(&spec, t, &table), "Deneb - Bar Chart"),
+    }
 }
 
 fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
@@ -56,7 +60,7 @@ fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::
         width: 800.0,
         height: 600.0,
         title: Some("Bar Chart Demo (WASM)".to_string()),
-        theme: None,
+        theme: parse_theme_name(),
     };
 
     let wit_result = host.render(data, "csv", &wit_spec)?;

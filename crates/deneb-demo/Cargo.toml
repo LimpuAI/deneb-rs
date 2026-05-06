@@ -27,7 +27,7 @@ deneb-component = { path = "../deneb-component" }
 deneb-wit = { path = "../deneb-wit", default-features = false, features = ["csv", "json", "arrow-format", "parquet-format"] }
 
 tiny-skia = "0.12"
-fontdue = "0.9"
+ab_glyph = "0.2"
 softbuffer = "0.4"
 raw-window-handle = "0.6"
 

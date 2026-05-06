@@ -19,7 +19,7 @@ pub mod chart;
 
 pub use error::ComponentError;
 pub use spec::{Mark, Field, Encoding, Aggregate, ChartSpec, ChartSpecBuilder};
-pub use theme::{Theme, Margin, DefaultTheme, DarkTheme};
+pub use theme::{Theme, Margin, LayoutConfig, DefaultTheme, DarkTheme, ForestTheme, NordicTheme, CappuccinoTheme};
 pub use layout::{LayoutResult, PlotArea, AxisLayout, Orientation, TickCalculator, compute_layout};
 pub use chart::{ChartOutput, LineChart, BarChart, ScatterChart, AreaChart};
 
