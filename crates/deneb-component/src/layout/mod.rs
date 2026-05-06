@@ -2,7 +2,7 @@
 //!
 //! 负责计算图表内部各元素的位置和尺寸。
 
-use crate::spec::{ChartSpec, Field};
+use crate::spec::{ChartSpec, Field, Mark};
 use deneb_core::{
     BandScale, LinearScale, Scale, TimeScale,
 };
@@ -165,7 +165,7 @@ pub fn compute_layout<T: crate::theme::Theme>(
     theme: &T,
     data: &deneb_core::DataTable,
 ) -> LayoutResult {
-    let padding = theme.padding();
+    let padding = theme.margin();
 
     // 计算绘图区域
     let plot_area = PlotArea {
@@ -184,10 +184,13 @@ pub fn compute_layout<T: crate::theme::Theme>(
             Orientation::Bottom,
             true,
             theme,
+            false,
         )
     });
 
     // 计算 Y 轴布局
+    // Bar chart 的 Y 轴必须包含 0（柱子长度编码数值，截断轴会误导）
+    let y_include_zero = spec.mark == Mark::Bar;
     let y_axis = spec.encoding.y.as_ref().and_then(|y_field| {
         compute_axis_layout::<T>(
             y_field,
@@ -196,6 +199,7 @@ pub fn compute_layout<T: crate::theme::Theme>(
             Orientation::Left,
             false,
             theme,
+            y_include_zero,
         )
     });
 
@@ -214,6 +218,7 @@ fn compute_axis_layout<T: crate::theme::Theme>(
     orientation: Orientation,
     is_horizontal: bool,
     _theme: &T,
+    include_zero: bool,
 ) -> Option<AxisLayout> {
     // 从数据中获取列
     let column = data.get_column(&field.name)?;
@@ -226,6 +231,9 @@ fn compute_axis_layout<T: crate::theme::Theme>(
     let (tick_positions, tick_labels) = match field.data_type {
         deneb_core::DataType::Quantitative => {
             if let Some((min, max)) = get_numeric_range(column) {
+                // Bar chart Y 轴必须包含 0，避免误导性截断
+                let min = if include_zero { min.min(0.0) } else { min };
+                let max = if include_zero { max.max(0.0) } else { max };
                 let max_ticks = if is_horizontal {
                     (plot_area.width / 50.0) as usize
                 } else {

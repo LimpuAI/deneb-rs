@@ -26,6 +26,19 @@ WIT 接口（`WitChartSpec`）只传字段名，不传类型。`wit_chart_spec_w
 
 **禁止硬编码所有字段为 `quantitative`**。Bar chart 的 x 轴必须是 nominal，否则不会生成 category 标签。
 
+### 轴域 (Axis Domain)
+
+Bar chart 的 Y 轴**必须从 0 开始**。柱子长度编码数值，截断轴会严重误导。
+
+| 图表类型 | Y 轴从 0？ | 原因 |
+|----------|-----------|------|
+| Bar / Histogram / Waterfall | ✅ 必须 | 长度编码数值 |
+| Line / Area / Scatter | ❌ 不必须 | 位置编码数值，截断轴展示变化率 |
+
+实现位置：`compute_axis_layout` 的 `include_zero` 参数，由 `spec.mark == Mark::Bar` 驱动。
+
+**禁止为 Bar chart 添加"不从 0 开始"的配置选项**。这不是可配置的偏好，是数据可视化的正确性要求。
+
 ### Arrow 物理类型映射
 
 Arrow/Parquet 解析器返回的 `data_type` 是物理类型名（`Int64`, `Float64`, `Utf8`），必须通过 `arrow_type_to_semantic()` 映射为 deneb 语义类型（`quantitative`, `nominal`, `temporal`）。映射在 `deneb-wit-wasm/src/lib.rs` 的 `limpuai_dt_to_bindgen` 和 `limpuai_dt_to_wit` 中执行。

@@ -73,3 +73,21 @@
 **解决方案**：添加 `arrow_type_to_semantic()` 映射函数，在类型转换时执行映射。
 
 **解决日期**：2026-05-01
+
+## Resolved: Bar chart 单系列所有柱子同色
+
+**原始问题**：bar chart 在单系列（series_count == 1）时，所有 category 的柱子都使用 `palette[0]`，导致视觉上无法区分不同类别。同时 Cappuccino 主题的 10 色调色板全是棕/米色系，色相差极小。
+
+**解决方案**：
+1. bar.rs `render_bars` 将颜色选择移入内层循环，单系列按 `theme.series_color(bar_idx)` 分色，多系列按 `theme.series_color(series_idx)` 分色
+2. Cappuccino 调色板从单色相棕色系替换为多色相暖色系（棕→橙→金→粉→绿→铜→赭→青→红→驼）
+
+**解决日期**：2026-05-07
+
+## Resolved: Bar chart Y 轴不从 0 开始
+
+**原始问题**：`compute_axis_layout` 中的 Y 轴 domain 直接取数据 min-max，不包含 0。Bar chart 的柱子长度编码数值，截断轴会严重误导（经典 Fox News 数据可视化错误）。
+
+**解决方案**：`compute_axis_layout` 新增 `include_zero` 参数。`compute_layout` 中 `spec.mark == Mark::Bar` 时为 Y 轴传 `true`，确保 domain 包含 0。其他图表类型传 `false`（位置编码不需要从 0 开始）。
+
+**解决日期**：2026-05-07

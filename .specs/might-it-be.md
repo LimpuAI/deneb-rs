@@ -47,6 +47,16 @@ JSON 数据输入的具体 schema 约定未确定。当前支持：
 - Theme trait 天然支持新图表
 - Encoding 通道可能需要扩展（如 shape 通道用于 Scatter 形状映射）
 
+## Future TODO: Bar chart 单系列按类别分色的用户覆盖
+
+当前实现：单系列 bar 按 category index 分色（`theme.series_color(bar_idx)`），多系列按 series index 分色。这是 ECharts `colorBy: 'data'` 的行为。
+
+可能的用户需求：通过 ChartSpec 配置 `colorBy: 'series' | 'data'`（类似 Vega-Lite 的 `scale.zero`），允许单系列 bar 也使用同色。推迟原因：当前默认行为符合大多数场景。
+
+## Future TODO: Forest/Nordic 调色板优化
+
+Forest（全绿色系）和 Nordic（全蓝灰色系）调色板与 Cappuccino 有同样的"色相过于接近"问题。Cappuccino 已修复为多色相暖色系，但 Forest 和 Nordic 尚未优化。推迟原因：Cappuccino 是用户报告的问题，Forest/Nordic 暂无反馈。
+
 ## Forward-Looking: 响应式集成方案
 
 响应式设计原则已内置（分层 + dirty flag），但宿主集成方案待设计：

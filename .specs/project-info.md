@@ -8,7 +8,7 @@
 | Crate | 职责 | 代码行数 | 测试数 |
 |-------|------|---------|--------|
 | deneb-core | 数据类型、绘图指令、比例尺、解析器、降采样 | 5934 | 134 + 5 doc |
-| deneb-component | 图表类型（Line/Bar/Scatter/Area）、布局、主题 | 5122 | 76 |
+| deneb-component | 图表类型（Line/Bar/Scatter/Area）、布局、主题 | 5400 | 100 |
 | deneb-wit | WASI 集成层、WIT 类型转换、lib_mode | 1200 | 20 |
 | deneb-wit-wasm | WASI Component Model 导出（wit-bindgen 0.57） | 400 | 4 集成 |
 | deneb-demo | 桌面演示（tiny-skia + wasmtime host） | 1800 | — |
@@ -21,7 +21,7 @@
 | chrono | — | 时间戳处理 | core |
 | arrow / parquet | 可选 | 二进制数据格式 | core, demo |
 | tiny-skia | 0.12 | CPU 2D 渲染 | demo |
-| fontdue | 0.9 | 文本栅格化 | demo |
+| ab_glyph | 0.2 | 文本栅格化（outline_glyph + kerning） | demo |
 | winit | 0.30 | 窗口管理 | demo |
 | softbuffer | 0.4 | 像素缓冲 | demo |
 | wasmtime | 44 | WASM 运行时 | demo |
@@ -41,6 +41,12 @@
 - Bar（柱状图，band scale + 自动间距）
 - Scatter（散点图，支持大小/颜色映射）
 - Area（面积图，支持堆叠 + 多系列）
+
+### 主题系统
+- 5 个内置主题：Default、Dark、Forest、Nordic、Cappuccino
+- 语义色槽 + 结构色分离（10 色数据系列 + 独立 axis/grid/title 色）
+- LayoutConfig 结构体集中管理布局参数
+- Bar chart Y 轴强制 include zero（`compute_axis_layout` 的 `include_zero` 参数）
 
 ### WASI 集成
 - WIT 接口：data-parser（csv/json/arrow/parquet）+ chart-renderer

@@ -510,7 +510,7 @@ impl AreaChart {
             });
 
             // 刻度标签
-            let tick_size = theme.tick_size();
+            let tick_size = theme.layout_config().tick_length;
             for (i, &pos) in x_axis.tick_positions.iter().enumerate() {
                 if let Some(label) = x_axis.tick_labels.get(i) {
                     let text = DrawCmd::Text {
@@ -520,7 +520,7 @@ impl AreaChart {
                         style: TextStyle::new()
                             .with_font_size(theme.tick_font_size())
                             .with_font_family(theme.font_family())
-                            .with_fill(FillStyle::Color(theme.foreground_color())),
+                            .with_fill(FillStyle::Color(theme.foreground_color().to_string())),
                         anchor: TextAnchor::Middle,
                         baseline: TextBaseline::Top,
                     };
@@ -557,7 +557,7 @@ impl AreaChart {
             });
 
             // 刻度标签
-            let tick_size = theme.tick_size();
+            let tick_size = theme.layout_config().tick_length;
             for (i, &pos) in y_axis.tick_positions.iter().enumerate() {
                 if let Some(label) = y_axis.tick_labels.get(i) {
                     let text = DrawCmd::Text {
@@ -567,7 +567,7 @@ impl AreaChart {
                         style: TextStyle::new()
                             .with_font_size(theme.tick_font_size())
                             .with_font_family(theme.font_family())
-                            .with_fill(FillStyle::Color(theme.foreground_color())),
+                            .with_fill(FillStyle::Color(theme.foreground_color().to_string())),
                         anchor: TextAnchor::End,
                         baseline: TextBaseline::Middle,
                     };
@@ -597,7 +597,7 @@ impl AreaChart {
                     .with_font_size(theme.title_font_size())
                     .with_font_family(theme.font_family())
                     .with_font_weight(FontWeight::Bold)
-                    .with_fill(FillStyle::Color(theme.foreground_color())),
+                    .with_fill(FillStyle::Color(theme.title_color().to_string())),
                 anchor: TextAnchor::Middle,
                 baseline: TextBaseline::Bottom,
             };
@@ -617,7 +617,7 @@ impl AreaChart {
             y: 0.0,
             width: spec.width,
             height: spec.height,
-            fill: Some(FillStyle::Color(theme.background_color())),
+            fill: Some(FillStyle::Color(theme.background_color().to_string())),
             stroke: None,
             corner_radius: None,
         };
