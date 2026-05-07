@@ -28,7 +28,18 @@
           "line-chart",
           "bar-chart",
           "scatter-chart",
-          "area-chart"
+          "area-chart",
+          "pie-chart",
+          "histogram",
+          "box-plot",
+          "waterfall",
+          "candlestick",
+          "radar",
+          "heatmap",
+          "strip-chart",
+          "sankey",
+          "chord",
+          "contour"
         ]
       },
       {

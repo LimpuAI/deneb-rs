@@ -189,8 +189,8 @@ pub fn compute_layout<T: crate::theme::Theme>(
     });
 
     // 计算 Y 轴布局
-    // Bar chart 的 Y 轴必须包含 0（柱子长度编码数值，截断轴会误导）
-    let y_include_zero = spec.mark == Mark::Bar;
+    // Bar/Histogram/Waterfall 的 Y 轴必须包含 0（柱子长度编码数值，截断轴会误导）
+    let y_include_zero = matches!(spec.mark, Mark::Bar | Mark::Histogram | Mark::Waterfall);
     let y_axis = spec.encoding.y.as_ref().and_then(|y_field| {
         compute_axis_layout::<T>(
             y_field,
