@@ -51,6 +51,8 @@ impl ScatterChart {
         data: &DataTable,
     ) -> Result<ChartOutput, ComponentError> {
         // 1. 验证数据
+        Self::validate_data(spec, data)?;
+
         if data.is_empty() {
             return Ok(Self::render_empty(spec, theme));
         }
@@ -176,6 +178,46 @@ impl ScatterChart {
             layers,
             hit_regions: Vec::new(),
         }
+    }
+
+    /// 验证数据
+    fn validate_data(spec: &ChartSpec, data: &DataTable) -> Result<(), ComponentError> {
+        // 检查 x 编码
+        if spec.encoding.x.is_none() {
+            return Err(ComponentError::InvalidConfig {
+                reason: "x encoding is required".to_string(),
+            });
+        }
+
+        // 检查 y 编码
+        if spec.encoding.y.is_none() {
+            return Err(ComponentError::InvalidConfig {
+                reason: "y encoding is required".to_string(),
+            });
+        }
+
+        // 只有在有数据时才检查字段是否存在
+        if !data.is_empty() {
+            // 检查 x 字段是否存在
+            if let Some(x_field) = &spec.encoding.x {
+                if data.get_column(&x_field.name).is_none() {
+                    return Err(ComponentError::InvalidConfig {
+                        reason: format!("x field '{}' not found in data", x_field.name),
+                    });
+                }
+            }
+
+            // 检查 y 字段是否存在
+            if let Some(y_field) = &spec.encoding.y {
+                if data.get_column(&y_field.name).is_none() {
+                    return Err(ComponentError::InvalidConfig {
+                        reason: format!("y field '{}' not found in data", y_field.name),
+                    });
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// 构建 X 轴 Scale

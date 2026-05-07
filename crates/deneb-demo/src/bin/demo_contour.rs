@@ -34,7 +34,8 @@ fn run_direct(csv: &str) -> Result<(), Box<dyn std::error::Error>> {
         .encoding(
             Encoding::new()
                 .x(Field::quantitative("x"))
-                .y(Field::quantitative("y")),
+                .y(Field::quantitative("y"))
+                .color(Field::quantitative("value")),
         )
         .title("Contour Chart Demo")
         .width(800.0)
@@ -56,7 +57,7 @@ fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::
         mark: "contour".to_string(),
         x_field: "x".to_string(),
         y_field: "y".to_string(),
-        color_field: None,
+        color_field: Some("value".to_string()),
         open_field: None,
         high_field: None,
         low_field: None,

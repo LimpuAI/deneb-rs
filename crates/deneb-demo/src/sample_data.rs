@@ -114,7 +114,7 @@ pub fn radar_chart_csv() -> &'static str {
 
 /// 热力图演示数据（x + y + 数值，CSV）
 pub fn heatmap_chart_csv() -> &'static str {
-    "x,y,value\nA,1,10\nA,2,20\nA,3,30\nB,1,25\nB,2,35\nB,3,15\nC,1,40\nC,2,10\nC,3,50"
+    "x,y,value\nA,Y1,10\nA,Y2,20\nA,Y3,30\nB,Y1,25\nB,Y2,35\nB,Y3,15\nC,Y1,40\nC,Y2,10\nC,Y3,50"
 }
 
 /// 条带图演示数据（分类 + 数值，CSV）

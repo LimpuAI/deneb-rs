@@ -84,11 +84,11 @@ flowchart LR
 
 | 维度 | 结果 | 详情 |
 |------|------|------|
-| P0 Functional | ✅ PASS | 11 图表全部功能正确，边缘情况覆盖 |
-| P1 Architecture | ✅ PASS (fixed) | include_zero 扩展 + shared.rs 重构 |
-| P2 Code Quality | ✅ PASS (fixed) | color2 字段补充 + pie/radar title 确认为有意差异 |
+| P0 Functional | ✅ PASS | contour demo color 编码修复 |
+| P1 Architecture | ✅ PASS | include_zero 扩展 + shared.rs 重构 + pie validate_data + pie/radar title |
+| P2 Code Quality | ✅ PASS | chord unused vars + SliceData dead field + sankey comment + line/scatter/area validate_data |
 | Tests | ✅ 373/373 | 174 core + 174 component + 20 wit + 5 doc |
-| Clippy | ✅ 0 errors | — |
+| Clippy | ✅ 0 errors | 17 pre-existing warnings (contour_chart.rs style) |
 
 ## Edge Cases Verified
 

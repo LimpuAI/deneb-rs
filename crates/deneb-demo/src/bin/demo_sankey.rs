@@ -34,7 +34,8 @@ fn run_direct(csv: &str) -> Result<(), Box<dyn std::error::Error>> {
         .encoding(
             Encoding::new()
                 .x(Field::nominal("source"))
-                .y(Field::quantitative("flow")),
+                .y(Field::nominal("target"))
+                .size(Field::quantitative("flow")),
         )
         .title("Sankey Chart Demo")
         .width(800.0)
@@ -55,7 +56,7 @@ fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::
     let wit_spec = WitChartSpec {
         mark: "sankey".to_string(),
         x_field: "source".to_string(),
-        y_field: "flow".to_string(),
+        y_field: "target".to_string(),
         color_field: None,
         open_field: None,
         high_field: None,

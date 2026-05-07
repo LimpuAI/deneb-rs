@@ -49,12 +49,24 @@ Docs: Updated
 - 每个 chart 实现应遵循现有模式：render() + validate_data() + render_empty() + render_background/grid/axes/title
 - Histogram 和 Waterfall 必须强制 Y 轴从 0 开始（CLAUDE.md 规范）
 
-## Review Findings (Wave 4)
+## Review Findings (Wave 4 — all resolved)
 
-### P1: Architecture Compliance
-- **`layout/mod.rs:L193`** `include_zero` 仅检查 `Mark::Bar`。Histogram/Waterfall 自建 Scale 正确含 0，但 `layout.y_axis`（用于网格线）不含 0，导致网格线与柱基线不对齐。应改为 `matches!(spec.mark, Mark::Bar | Mark::Histogram | Mark::Waterfall)`
-- **`chart/bar.rs`** 未使用 `chart/shared.rs` 公共辅助函数，保留约 300 行重复代码（render_background/grid/axes/title）。应重构为使用 shared helpers
+### P0: Fixed
+- **`demo_contour.rs`** 缺少 color 编码 → 已添加 `.color(Field::quantitative("value"))` 和 `color_field: Some("value")`
 
-### P2: Code Quality
-- **`spec/mod.rs`** Encoding 缺少 design.md 定义的 `color2: Option<Field>` 字段（当前无图表使用，低优先级）
-- **`chart/pie.rs`** 和 **`chart/radar.rs`** 有自定义 render_title 可替换为 `shared::render_title`
+### P1: Fixed
+- **`layout/mod.rs:L193`** `include_zero` 扩展为 `matches!(Bar | Histogram | Waterfall)` ✅
+- **`chart/bar.rs`** 重构使用 `chart/shared.rs` 公共辅助 ✅
+- **`chart/pie.rs`** validate_data 扩展覆盖 fallback 通道 (color.or(x), theta.or(y)) ✅
+- **`chart/pie.rs` + `chart/radar.rs`** 自定义 render_title 替换为 `shared::render_title` ✅
+
+### P2: Fixed
+- **`spec/mod.rs`** Encoding 添加 `color2: Option<Field>` ✅
+- **`chart/chord.rs`** 移除 4 个未使用变量 (src_end_x/y, dst_start_x/y) ✅
+- **`chart/pie.rs`** 移除 SliceData.value 死字段 ✅
+- **`sankey_layout.rs`** 文件注释更新 (BFS → Kahn's topological sort) ✅
+- **`chart/line.rs` + `scatter.rs` + `area.rs`** 添加 validate_data 方法 ✅
+
+### P2: Pre-existing (not fixed, low priority)
+- **`contour_chart.rs`** clippy warnings (type complexity, needless_range_loop) — 功能正确
+- **`bar.rs` / `waterfall.rs`** 冗余 include_zero 逻辑 — 不影响正确性

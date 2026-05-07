@@ -1,7 +1,6 @@
 # Session: more-chart-types
-Stage: Requirements confirmed, specs generated
-Task: Ready to start - Task 1 (扩展 Mark 枚举和 Encoding)
+Stage: Complete — all 23 tasks done, 2nd review passed, all P0/P1/P2 resolved
 Branch: feature/more-chart-types
-Progress: 0/23 (0%)
-Next: cc-next to execute first task
-Modified: 2026-05-07T22:00:00+08:00
+Progress: 23/23 (100%)
+Tests: 373/373 pass, 0 clippy errors
+Modified: 2026-05-07

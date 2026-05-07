@@ -277,18 +277,21 @@ impl SankeyChart {
         let mut hit_regions = Vec::new();
 
         // 渲染连线（ribbon）—— 先画连线再画节点，确保节点在上层
+        // 布局算法输出坐标从 (0,0) 开始，需要加上 plot_area 偏移
+        let ox = plot_area.x;
+        let oy = plot_area.y;
+
         for link in &layout.links {
             if link.path_points.len() < 4 {
                 continue;
             }
 
             let (x0, y0_top) = link.path_points[0];
-            let (cx1, cy1) = link.path_points[1];
-            let (cx2, cy2) = link.path_points[2];
+            let (cx1, _cy1) = link.path_points[1];
+            let (cx2, _cy2) = link.path_points[2];
             let (x1, y1_top) = link.path_points[3];
 
             // 需要计算 ribbon 的底部 y 值
-            // 使用 source 和 target 节点的信息计算 ribbon 高度
             let source_node = &layout.nodes[link.source];
             let target_node = &layout.nodes[link.target];
             let src_flow = source_node.value.max(1.0);
@@ -299,13 +302,57 @@ impl SankeyChart {
             let y0_bot = y0_top + ribbon_h_src;
             let y1_bot = y1_top + ribbon_h_dst;
 
-            // 绘制 ribbon 路径：顶部边 → 右侧 → 底部边（反向）→ 左侧
             let mut segments = Vec::new();
-            segments.push(PathSegment::MoveTo(x0, y0_top));
-            segments.push(PathSegment::BezierTo(cx1, cy1, cx2, cy2, x1, y1_top));
-            segments.push(PathSegment::LineTo(x1, y1_bot));
-            segments.push(PathSegment::BezierTo(cx2, cy2, cx1, cy1, x0, y0_bot));
-            segments.push(PathSegment::Close);
+
+            if let Some(ry) = link.route_y {
+                // Skip-column link: multi-segment path to route around intermediate nodes
+                // Path: source exit → short bezier to route_y → horizontal at route_y
+                //       → short bezier to target entry
+                let ry_bot = ry + ribbon_h_src; // approximate: use source ribbon height
+
+                // Top edge: source → route corridor
+                segments.push(PathSegment::MoveTo(x0 + ox, y0_top + oy));
+                // Bezier from source to route level, with horizontal tangent at route level
+                let bend_x = (x0 + cx1) / 2.0; // halfway to midpoint
+                segments.push(PathSegment::BezierTo(
+                    bend_x + ox, y0_top + oy,
+                    bend_x + ox, ry + oy,
+                    cx1 + ox, ry + oy,
+                ));
+                // Horizontal across intermediate column(s)
+                segments.push(PathSegment::LineTo(cx2 + ox, ry + oy));
+                // Bezier from route level to target, with horizontal tangent at route level
+                let bend_x2 = (cx2 + x1) / 2.0;
+                segments.push(PathSegment::BezierTo(
+                    bend_x2 + ox, ry + oy,
+                    bend_x2 + ox, y1_top + oy,
+                    x1 + ox, y1_top + oy,
+                ));
+
+                // Right side: top → bottom at target
+                segments.push(PathSegment::LineTo(x1 + ox, y1_bot + oy));
+
+                // Bottom edge: reverse of top, at ry_bot level
+                segments.push(PathSegment::BezierTo(
+                    bend_x2 + ox, y1_bot + oy,
+                    bend_x2 + ox, ry_bot + oy,
+                    cx2 + ox, ry_bot + oy,
+                ));
+                segments.push(PathSegment::LineTo(cx1 + ox, ry_bot + oy));
+                segments.push(PathSegment::BezierTo(
+                    bend_x + ox, ry_bot + oy,
+                    bend_x + ox, y0_bot + oy,
+                    x0 + ox, y0_bot + oy,
+                ));
+                segments.push(PathSegment::Close);
+            } else {
+                // Normal adjacent-column link: single cubic bezier
+                segments.push(PathSegment::MoveTo(x0 + ox, y0_top + oy));
+                segments.push(PathSegment::BezierTo(cx1 + ox, y0_top + oy, cx2 + ox, y1_top + oy, x1 + ox, y1_top + oy));
+                segments.push(PathSegment::LineTo(x1 + ox, y1_bot + oy));
+                segments.push(PathSegment::BezierTo(cx2 + ox, y1_bot + oy, cx1 + ox, y0_bot + oy, x0 + ox, y0_bot + oy));
+                segments.push(PathSegment::Close);
+            }
 
             output.add_command(DrawCmd::Path {
                 segments,

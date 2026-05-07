@@ -58,7 +58,7 @@ impl PieChart {
 
         // 标题层
         if let Some(title) = &spec.title {
-            layers.update_layer(LayerKind::Title, Self::render_title(spec, theme, title, &plot_area));
+            layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &plot_area));
         }
 
         Ok(ChartOutput {
@@ -69,18 +69,32 @@ impl PieChart {
 
     /// 验证数据
     fn validate_data(spec: &ChartSpec, data: &DataTable) -> Result<(), ComponentError> {
+        // 检查 color 或 x 字段（用于标签）
         if let Some(color_field) = &spec.encoding.color {
             if data.get_column(&color_field.name).is_none() {
                 return Err(ComponentError::InvalidConfig {
                     reason: format!("color field '{}' not found in data", color_field.name),
                 });
             }
+        } else if let Some(x_field) = &spec.encoding.x {
+            if data.get_column(&x_field.name).is_none() {
+                return Err(ComponentError::InvalidConfig {
+                    reason: format!("x field '{}' not found in data", x_field.name),
+                });
+            }
         }
 
+        // 检查 theta 或 y 字段（用于数值）
         if let Some(theta_field) = &spec.encoding.theta {
             if data.get_column(&theta_field.name).is_none() {
                 return Err(ComponentError::InvalidConfig {
                     reason: format!("theta field '{}' not found in data", theta_field.name),
+                });
+            }
+        } else if let Some(y_field) = &spec.encoding.y {
+            if data.get_column(&y_field.name).is_none() {
+                return Err(ComponentError::InvalidConfig {
+                    reason: format!("y field '{}' not found in data", y_field.name),
                 });
             }
         }
@@ -101,7 +115,7 @@ impl PieChart {
         layers.update_layer(LayerKind::Background, super::shared::render_background(spec, theme));
 
         if let Some(title) = &spec.title {
-            layers.update_layer(LayerKind::Title, Self::render_title(spec, theme, title, &plot_area));
+            layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &plot_area));
         }
 
         ChartOutput {
@@ -155,7 +169,6 @@ impl PieChart {
 
                 slices.push(SliceData {
                     label,
-                    value,
                     fraction,
                     row_idx,
                 });
@@ -171,7 +184,6 @@ impl PieChart {
 
                 slices.push(SliceData {
                     label,
-                    value: 1.0,
                     fraction: 1.0 / row_count as f64,
                     row_idx,
                 });
@@ -273,41 +285,13 @@ impl PieChart {
         row_data
     }
 
-    /// 渲染背景
-    /// 渲染标题
-    fn render_title<T: Theme>(
-        _spec: &ChartSpec,
-        theme: &T,
-        title: &str,
-        _plot_area: &PlotArea,
-    ) -> RenderOutput {
-        let mut output = RenderOutput::new();
 
-        let title_style = TextStyle::new()
-            .with_font_size(theme.title_font_size())
-            .with_font_family(theme.font_family())
-            .with_font_weight(FontWeight::Bold)
-            .with_fill(FillStyle::Color(theme.title_color().to_string()));
-
-        output.add_command(DrawCmd::Text {
-            x: _spec.width / 2.0,
-            y: theme.margin().top / 2.0,
-            content: title.to_string(),
-            style: title_style,
-            anchor: TextAnchor::Middle,
-            baseline: TextBaseline::Middle,
-        });
-
-        output
-    }
 }
 
 /// 切片数据
 struct SliceData {
     /// 标签
     label: String,
-    /// 原始数值
-    value: f64,
     /// 占比 (0-1)
     fraction: f64,
     /// 行索引

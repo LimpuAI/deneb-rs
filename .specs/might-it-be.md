@@ -123,3 +123,25 @@ deneb-viz 通过 WIT import 导入 limpuai:data 解析器，宿主在 Linker 中
 劣势：
 - deneb-viz 必须在编译时知道所有 parser 接口
 - 新增格式需要修改 deneb-viz WIT 并重编译
+
+## Future TODO: Sankey/Chord 交互增强
+
+当前 Sankey 和 Chord 的 HitRegion 使用简单 BoundingBox 覆盖，无法精确到单条 ribbon 或节点。精确交互需要：
+- Sankey: ribbon 路径命中检测（点在贝塞尔带内）
+- Chord: 弧段 + ribbon 命中检测
+- Hover 高亮联动（源→目标高亮）
+
+推迟原因：当前 BoundingBox 覆盖满足基本交互需求，精确检测需要路径命中算法。
+
+## Future TODO: Contour 算法优化
+
+当前 marching squares 实现对所有等高线使用统一网格分辨率（`sqrt(n).clamp(4, 50)`）。可优化：
+- 自适应网格密度（数据密集区域更细）
+- GPU 并行计算（WASM 环境受限）
+- 更高阶等高线插值（当前为线性）
+
+推迟原因：9×12 数据集性能足够，大数据集场景待验证。
+
+## Future TODO: clippy warning 清理
+
+contour_chart.rs 有 3 个 clippy warning（type complexity、needless_range_loop、vec_init_then_push），不影响功能但降低代码质量评分。推迟原因：功能正确，优先级低于新功能开发。

@@ -17,6 +17,8 @@ pub struct ChordChart;
 
 /// 弧段之间的间隙角度（度）
 const GAP_DEGREES: f64 = 2.0;
+/// 弧段内径与外径的比例（厚环形段）
+const INNER_RADIUS_RATIO: f64 = 0.85;
 
 impl ChordChart {
     /// 渲染和弦图
@@ -292,22 +294,24 @@ impl ChordChart {
             let fill_color = Self::with_alpha(&color, 0.4);
             let stroke_color = Self::with_alpha(&color, 0.7);
 
-            // 绘制 ribbon：从 source 弧段到 target 弧段的贝塞尔曲线
+            // 绘制 ribbon：source 弧段内侧 → 贝塞尔到 target 弧段内侧 → 沿 target 弧 → 贝塞尔回到 source
             let src_start_x = cx + radius * ribbon.source_start.cos();
             let src_start_y = cy + radius * ribbon.source_start.sin();
             let dst_end_x = cx + radius * ribbon.target_end.cos();
             let dst_end_y = cy + radius * ribbon.target_end.sin();
 
             let mut segments = Vec::new();
+            // 从 source 弧起点出发
             segments.push(PathSegment::MoveTo(src_start_x, src_start_y));
-            // 沿 source 弧
+            // 沿 source 弧到终点
             segments.push(PathSegment::Arc(cx, cy, radius, ribbon.source_start, ribbon.source_end, false));
-            // 贝塞尔曲线到 target 弧的终点
-            segments.push(PathSegment::BezierTo(cx, cy, cx, cy, dst_end_x, dst_end_y));
+            // 二次贝塞尔曲线到 target 弧的终点
+            segments.push(PathSegment::QuadraticTo(cx, cy, dst_end_x, dst_end_y));
             // 沿 target 弧（反向）
             segments.push(PathSegment::Arc(cx, cy, radius, ribbon.target_end, ribbon.target_start, true));
-            // 贝塞尔曲线回到起点
-            segments.push(PathSegment::BezierTo(cx, cy, cx, cy, src_start_x, src_start_y));
+            // 二次贝塞尔曲线回到 source 弧的起点
+            segments.push(PathSegment::QuadraticTo(cx, cy, src_start_x, src_start_y));
+            segments.push(PathSegment::Close);
 
             output.add_command(DrawCmd::Path {
                 segments,
@@ -316,14 +320,31 @@ impl ChordChart {
             });
         }
 
-        // 画弧段（节点）
+        // 画弧段（节点）—— 环形段，不是扇形
+        let inner_radius = radius * INNER_RADIUS_RATIO;
         for node in &layout.nodes {
             let color = theme.series_color(node.index).to_string();
 
-            output.add_command(DrawCmd::Arc {
-                cx, cy, r: radius,
-                start_angle: node.start_angle,
-                end_angle: node.end_angle,
+            // 环形段路径：外弧 → 连接到内弧终点 → 内弧（反向）→ Close
+            let mut segments = Vec::new();
+            // 外弧起点
+            segments.push(PathSegment::MoveTo(
+                cx + radius * node.start_angle.cos(),
+                cy + radius * node.start_angle.sin(),
+            ));
+            // 外弧
+            segments.push(PathSegment::Arc(cx, cy, radius, node.start_angle, node.end_angle, false));
+            // 连线到内弧终点
+            segments.push(PathSegment::LineTo(
+                cx + inner_radius * node.end_angle.cos(),
+                cy + inner_radius * node.end_angle.sin(),
+            ));
+            // 内弧（反向）
+            segments.push(PathSegment::Arc(cx, cy, inner_radius, node.end_angle, node.start_angle, true));
+            segments.push(PathSegment::Close);
+
+            output.add_command(DrawCmd::Path {
+                segments,
                 fill: Some(FillStyle::Color(color.clone())),
                 stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
             });

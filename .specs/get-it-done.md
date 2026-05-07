@@ -131,3 +131,59 @@
 **解决方案**：添加 `color2` 字段 + builder 方法 + 测试。当前无图表使用，API 完整性补齐。
 
 **解决日期**：2026-05-07
+
+## Resolved: Contour demo 缺失 color 编码
+
+**原始问题**（2nd review P0）：demo_contour.rs 的 Encoding 只有 x 和 y，缺少 color 通道。contour_chart.rs 回退到 y 列当值，导致等高线编码 y 坐标而非 value。
+
+**解决方案**：Native 路径添加 `.color(Field::quantitative("value"))`，WASM 路径添加 `color_field: Some("value".to_string())`。
+
+**解决日期**：2026-05-07
+
+## Resolved: Pie validate_data 不覆盖 fallback 通道
+
+**原始问题**（2nd review P1）：`build_slices()` 使用 `color.or(x)` 和 `theta.or(y)` fallback，但 `validate_data()` 只验证 color/theta。当用户只设 x 不设 color 时，validate 通过但 build_slices 读取未验证字段。
+
+**解决方案**：validate_data 增加对 x（当 color None 时）和 y（当 theta None 时）的验证。
+
+**解决日期**：2026-05-07
+
+## Resolved: Pie/Radar 自定义 render_title
+
+**原始问题**（2nd review P1）：pie.rs 和 radar.rs 有自定义 render_title 方法，与其他 13 种图表使用 `shared::render_title` 不一致。
+
+**解决方案**：删除自定义方法，调用 `super::shared::render_title(theme, title, &plot_area)`。
+
+**解决日期**：2026-05-07
+
+## Resolved: Chord 4 个未使用变量
+
+**原始问题**（2nd review P2）：chord.rs 中 `src_end_x/y`、`dst_start_x/y` 是上一轮 ribbon 重构的残留，clippy 报警。
+
+**解决方案**：删除 4 个未使用变量声明。
+
+**解决日期**：2026-05-07
+
+## Resolved: Pie SliceData.value 死字段
+
+**原始问题**（2nd review P2）：SliceData 结构体的 value 字段 never read（dead code）。
+
+**解决方案**：移除 value 字段及相关初始化。
+
+**解决日期**：2026-05-07
+
+## Resolved: Line/Scatter/Area 缺少 validate_data
+
+**原始问题**（2nd review P2）：line.rs、scatter.rs、area.rs 无独立 validate_data 方法，与项目其他 12/15 图表模式不一致。
+
+**解决方案**：添加 validate_data 方法，检查 x/y 编码存在性及字段在数据中存在性。空数据时跳过字段检查（与 bar.rs 一致）。
+
+**解决日期**：2026-05-07
+
+## Resolved: Sankey layout 文件注释过时
+
+**原始问题**（2nd review P2）：sankey_layout.rs 文件注释仍写 "BFS from source nodes"，但算法已改为 Kahn 最长路径拓扑排序。
+
+**解决方案**：更新注释为 "Kahn's topological sort (longest path)"。
+
+**解决日期**：2026-05-07

@@ -34,7 +34,11 @@ fn run_direct(csv: &str) -> Result<(), Box<dyn std::error::Error>> {
         .encoding(
             Encoding::new()
                 .x(Field::nominal("date"))
-                .y(Field::quantitative("close")),
+                .y(Field::quantitative("close"))
+                .open(Field::quantitative("open"))
+                .high(Field::quantitative("high"))
+                .low(Field::quantitative("low"))
+                .close(Field::quantitative("close")),
         )
         .title("Candlestick Chart Demo")
         .width(800.0)

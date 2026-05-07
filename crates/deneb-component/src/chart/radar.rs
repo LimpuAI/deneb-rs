@@ -76,7 +76,7 @@ impl RadarChart {
 
         // 标题层
         if let Some(title) = &spec.title {
-            layers.update_layer(LayerKind::Title, Self::render_title(spec, theme, title, &plot_area));
+            layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &plot_area));
         }
 
         Ok(ChartOutput {
@@ -119,7 +119,7 @@ impl RadarChart {
         layers.update_layer(LayerKind::Background, super::shared::render_background(spec, theme));
 
         if let Some(title) = &spec.title {
-            layers.update_layer(LayerKind::Title, Self::render_title(spec, theme, title, &plot_area));
+            layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &plot_area));
         }
 
         ChartOutput {
@@ -416,32 +416,7 @@ impl RadarChart {
         format!("rgba(128,128,128,{:.2})", alpha)
     }
 
-    /// 渲染标题
-    fn render_title<T: Theme>(
-        spec: &ChartSpec,
-        theme: &T,
-        title: &str,
-        _plot_area: &PlotArea,
-    ) -> RenderOutput {
-        let mut output = RenderOutput::new();
 
-        let title_style = TextStyle::new()
-            .with_font_size(theme.title_font_size())
-            .with_font_family(theme.font_family())
-            .with_font_weight(FontWeight::Bold)
-            .with_fill(FillStyle::Color(theme.title_color().to_string()));
-
-        output.add_command(DrawCmd::Text {
-            x: spec.width / 2.0,
-            y: theme.margin().top / 2.0,
-            content: title.to_string(),
-            style: title_style,
-            anchor: TextAnchor::Middle,
-            baseline: TextBaseline::Middle,
-        });
-
-        output
-    }
 }
 
 #[cfg(test)]

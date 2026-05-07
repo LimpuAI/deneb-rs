@@ -1,6 +1,6 @@
 //! Sankey diagram layout algorithm
 //!
-//! Assigns column positions to nodes via BFS from source nodes,
+//! Assigns column positions to nodes via Kahn's topological sort (longest path),
 //! stacks nodes vertically within each column proportional to flow,
 //! and generates cubic Bézier control points for ribbon paths.
 
@@ -64,6 +64,9 @@ pub struct SankeyLink {
     pub path_points: Vec<(f64, f64)>,
     /// Fill color (hex string)
     pub color: String,
+    /// For skip-column links: the Y coordinate at which the ribbon should route
+    /// around intermediate column nodes. `None` for normal adjacent-column links.
+    pub route_y: Option<f64>,
 }
 
 /// Output of the Sankey layout computation
@@ -108,45 +111,49 @@ pub fn layout_sankey(
     }
 
     // -----------------------------------------------------------------------
-    // 1. Assign column (depth) to each node via BFS from source nodes
+    // 1. Assign column (depth) to each node via longest-path from sources
+    //    (topological order using max distance). This ensures nodes that are
+    //    reachable via shortcuts — e.g. Solar→Homes at depth 1 — still get
+    //    placed at the correct column (depth 2) because Power→Homes exists.
     // -----------------------------------------------------------------------
-    let mut depth = vec![usize::MAX; n];
-    let has_incoming: Vec<bool> = {
-        let mut v = vec![false; n];
-        for link in links {
-            if link.target < n {
-                v[link.target] = true;
-            }
-        }
-        v
-    };
+    let mut depth = vec![0_usize; n];
 
-    // Initialize sources (nodes with no incoming links)
+    // Kahn's topological sort with max depth propagation
+    let mut in_degree: Vec<usize> = vec![0; n];
+    for link in links {
+        if link.target < n {
+            in_degree[link.target] += 1;
+        }
+    }
+
     let mut queue: VecDeque<usize> = VecDeque::new();
     for i in 0..n {
-        if !has_incoming[i] {
-            depth[i] = 0;
+        if in_degree[i] == 0 {
             queue.push_back(i);
         }
     }
 
-    // BFS to propagate depths
+    let mut visited = 0usize;
     while let Some(node) = queue.pop_front() {
+        visited += 1;
         let d = depth[node];
         for link in links {
-            if link.source == node && link.target < n && depth[link.target] == usize::MAX {
-                depth[link.target] = d + 1;
-                queue.push_back(link.target);
+            if link.source == node && link.target < n {
+                // Propagate max depth
+                let new_depth = d + 1;
+                if new_depth > depth[link.target] {
+                    depth[link.target] = new_depth;
+                }
+                in_degree[link.target] -= 1;
+                if in_degree[link.target] == 0 {
+                    queue.push_back(link.target);
+                }
             }
         }
     }
 
-    // Clamp any unreachable nodes to depth 0
-    for d in &mut depth {
-        if *d == usize::MAX {
-            *d = 0;
-        }
-    }
+    // Handle cycles: any unvisited node stays at depth 0
+    let _ = visited;
 
     let max_depth = depth.iter().copied().max().unwrap_or(0);
     let num_cols = max_depth + 1;
@@ -184,8 +191,16 @@ pub fn layout_sankey(
 
     // -----------------------------------------------------------------------
     // 3. Stack nodes vertically within each column
+    //    All columns share a unified scale (max column total) so that
+    //    node heights are comparable across columns.
     // -----------------------------------------------------------------------
     let usable_height = height - node_gap * (n as f64); // rough guard
+
+    // Compute per-column totals and find the global max
+    let col_totals: Vec<f64> = col_nodes.iter().map(|col| {
+        col.iter().map(|&i| node_flow[i]).sum::<f64>()
+    }).collect();
+    let global_max_flow = col_totals.iter().cloned().fold(0.0_f64, f64::max).max(1.0);
 
     let mut rects_indexed: Vec<Option<SankeyNode>> = vec![None; n];
 
@@ -193,13 +208,17 @@ pub fn layout_sankey(
         if nodes_in_col.is_empty() {
             continue;
         }
-        let total_flow: f64 = nodes_in_col.iter().map(|&i| node_flow[i]).sum();
+        // Use unified scale: available height proportional to this column's share
+        let col_fraction = col_totals[col] / global_max_flow;
         let total_gaps = node_gap * (nodes_in_col.len() as f64 + 1.0);
-        let available = (usable_height - total_gaps).max(10.0 * nodes_in_col.len() as f64);
+        let available = (usable_height * col_fraction - total_gaps).max(10.0 * nodes_in_col.len() as f64);
+        // Top-center the column within the full height
+        let col_height = available + total_gaps;
+        let col_y_offset = (usable_height - col_height).max(0.0) / 2.0;
 
-        let mut y_cursor = node_gap;
+        let mut y_cursor = col_y_offset + node_gap;
         for &node_idx in nodes_in_col {
-            let h = (node_flow[node_idx] / total_flow * available).max(4.0);
+            let h = (node_flow[node_idx] / col_totals[col] * available).max(4.0);
             let color = nodes[node_idx]
                 .color
                 .clone()
@@ -217,7 +236,20 @@ pub fn layout_sankey(
         }
     }
 
-    let node_rects: Vec<SankeyNode> = rects_indexed.into_iter().filter_map(|opt| opt).collect();
+    let node_rects: Vec<SankeyNode> = rects_indexed.iter().filter_map(|opt| opt.clone()).collect();
+
+    // Pre-compute per-column bounding boxes for skip-column ribbon routing
+    let col_bounds: Vec<Option<(f64, f64)>> = (0..num_cols).map(|c| {
+        let mut top = f64::MAX;
+        let mut bot = 0.0_f64;
+        for &idx in &col_nodes[c] {
+            if let Some(node) = &rects_indexed[idx] {
+                top = top.min(node.y);
+                bot = bot.max(node.y + node.height);
+            }
+        }
+        if top < f64::MAX { Some((top, bot)) } else { None }
+    }).collect();
 
     // -----------------------------------------------------------------------
     // 4. Generate ribbon control points (cubic Bézier)
@@ -249,18 +281,47 @@ pub fn layout_sankey(
         let y0_top = src.y + src_y_used[link.source];
         let x0 = src.x + src.width;
         let x1 = dst.x;
-        let cx = (x0 + x1) / 2.0;
 
         src_y_used[link.source] += ribbon_h_src;
         dst_y_used[link.target] += ribbon_h_dst;
 
-        // Output 4 control points for the top edge of the ribbon
+        let src_depth = depth[link.source];
+        let dst_depth = depth[link.target];
+        let col_span = dst_depth as isize - src_depth as isize;
+
+        let target_y = dst.y + dst_y_used[link.target] - ribbon_h_dst;
+
+        // Normal cubic bezier control points (used by both paths)
+        let cx = (x0 + x1) / 2.0;
         let path_points = vec![
-            (x0, y0_top),           // source exit
-            (cx, y0_top),           // control 1
-            (cx, dst.y + dst_y_used[link.target] - ribbon_h_dst), // control 2
-            (x1, dst.y + dst_y_used[link.target] - ribbon_h_dst), // target entry
+            (x0, y0_top),
+            (cx, y0_top),
+            (cx, target_y),
+            (x1, target_y),
         ];
+
+        let route_y = if col_span > 1 {
+            // Skip-column link: compute avoidance Y
+            let mut mid_top = f64::MAX;
+            let mut mid_bot = 0.0_f64;
+            for mid_col in (src_depth + 1)..dst_depth {
+                if let Some((ct, cb)) = col_bounds[mid_col] {
+                    mid_top = mid_top.min(ct);
+                    mid_bot = mid_bot.max(cb);
+                }
+            }
+
+            let mid_center_y = (mid_top + mid_bot) / 2.0;
+            let link_y = (y0_top + target_y) / 2.0;
+
+            if link_y < mid_center_y {
+                Some((mid_top - node_gap).max(0.0))
+            } else {
+                Some(mid_bot + node_gap)
+            }
+        } else {
+            None
+        };
 
         let color = link
             .color
@@ -273,6 +334,7 @@ pub fn layout_sankey(
             value: link.value,
             path_points,
             color,
+            route_y,
         });
     }
 
