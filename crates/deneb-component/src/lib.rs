@@ -21,7 +21,7 @@ pub use error::ComponentError;
 pub use spec::{Mark, Field, Encoding, Aggregate, ChartSpec, ChartSpecBuilder};
 pub use theme::{Theme, Margin, LayoutConfig, DefaultTheme, DarkTheme, ForestTheme, NordicTheme, CappuccinoTheme};
 pub use layout::{LayoutResult, PlotArea, AxisLayout, Orientation, TickCalculator, compute_layout};
-pub use chart::{ChartOutput, LineChart, BarChart, ScatterChart, AreaChart};
+pub use chart::{ChartOutput, LineChart, BarChart, ScatterChart, AreaChart, BoxPlotChart, StripChart, HistogramChart, WaterfallChart, CandlestickChart, HeatmapChart, PieChart, RadarChart, SankeyChart, ChordChart, ContourChart};
 
 // 重新导出 deneb-core 的类型
 pub use deneb_core;

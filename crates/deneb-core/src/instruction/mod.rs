@@ -2,7 +2,11 @@
 //!
 //! 提供语义化的绘图指令和底层的 Canvas 操作指令。
 
-use crate::style::{FillStyle, StrokeStyle, TextStyle, TextAnchor, TextBaseline};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use crate::style::{FillStyle, GradientKind, StrokeStyle, TextStyle, TextAnchor, TextBaseline};
+
+static GRADIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// 绘图指令
 ///
@@ -43,6 +47,23 @@ pub enum DrawCmd {
         cy: f64,
         /// 半径
         r: f64,
+        /// 填充样式
+        fill: Option<FillStyle>,
+        /// 描边样式
+        stroke: Option<StrokeStyle>,
+    },
+    /// 扇形/弧形
+    Arc {
+        /// 圆心 x 坐标
+        cx: f64,
+        /// 圆心 y 坐标
+        cy: f64,
+        /// 半径
+        r: f64,
+        /// 起始角度（弧度）
+        start_angle: f64,
+        /// 结束角度（弧度）
+        end_angle: f64,
         /// 填充样式
         fill: Option<FillStyle>,
         /// 描边样式
@@ -91,17 +112,30 @@ impl DrawCmd {
                     // 圆角矩形需要用路径绘制
                     ops.extend(Self::rounded_rect_path(*x, *y, *width, *height, *radius, fill, stroke));
                 } else {
-                    // 普通矩形可以直接使用 fillRect/strokeRect
-                    if let Some(fill_style) = fill {
-                        if let FillStyle::Color(color) = fill_style {
-                            ops.push(CanvasOp::SetFillStyle(color.clone()));
-                            ops.push(CanvasOp::FillRect(*x, *y, *width, *height));
+                    // 普通矩形：纯色可以直接使用 fillRect/strokeRect
+                    // 渐变需要用路径绘制
+                    let needs_path = fill.as_ref().map_or(false, |f| matches!(f, FillStyle::Gradient(_)));
+                    if needs_path {
+                        ops.push(CanvasOp::BeginPath);
+                        ops.push(CanvasOp::MoveTo(*x, *y));
+                        ops.push(CanvasOp::LineTo(*x + *width, *y));
+                        ops.push(CanvasOp::LineTo(*x + *width, *y + *height));
+                        ops.push(CanvasOp::LineTo(*x, *y + *height));
+                        ops.push(CanvasOp::ClosePath);
+                        ops.extend(Self::apply_fill(fill));
+                        ops.extend(Self::apply_stroke(stroke));
+                    } else {
+                        if let Some(fill_style) = fill {
+                            if let FillStyle::Color(color) = fill_style {
+                                ops.push(CanvasOp::SetFillStyle(color.clone()));
+                                ops.push(CanvasOp::FillRect(*x, *y, *width, *height));
+                            }
                         }
-                    }
-                    if let Some(stroke_style) = stroke {
-                        if let StrokeStyle::Color(color) = stroke_style {
-                            ops.push(CanvasOp::SetStrokeStyle(color.clone()));
-                            ops.push(CanvasOp::StrokeRect(*x, *y, *width, *height));
+                        if let Some(stroke_style) = stroke {
+                            if let StrokeStyle::Color(color) = stroke_style {
+                                ops.push(CanvasOp::SetStrokeStyle(color.clone()));
+                                ops.push(CanvasOp::StrokeRect(*x, *y, *width, *height));
+                            }
                         }
                     }
                 }
@@ -125,18 +159,8 @@ impl DrawCmd {
                     ops.extend(segment.to_canvas_ops());
                 }
 
-                if let Some(fill_style) = fill {
-                    if let FillStyle::Color(color) = fill_style {
-                        ops.push(CanvasOp::SetFillStyle(color.clone()));
-                        ops.push(CanvasOp::Fill);
-                    }
-                }
-                if let Some(stroke_style) = stroke {
-                    if let StrokeStyle::Color(color) = stroke_style {
-                        ops.push(CanvasOp::SetStrokeStyle(color.clone()));
-                        ops.push(CanvasOp::Stroke);
-                    }
-                }
+                ops.extend(Self::apply_fill(fill));
+                ops.extend(Self::apply_stroke(stroke));
 
                 ops
             }
@@ -152,18 +176,32 @@ impl DrawCmd {
                 ops.push(CanvasOp::BeginPath);
                 ops.push(CanvasOp::Arc(*cx, *cy, *r, 0.0, 2.0 * std::f64::consts::PI, false));
 
-                if let Some(fill_style) = fill {
-                    if let FillStyle::Color(color) = fill_style {
-                        ops.push(CanvasOp::SetFillStyle(color.clone()));
-                        ops.push(CanvasOp::Fill);
-                    }
-                }
-                if let Some(stroke_style) = stroke {
-                    if let StrokeStyle::Color(color) = stroke_style {
-                        ops.push(CanvasOp::SetStrokeStyle(color.clone()));
-                        ops.push(CanvasOp::Stroke);
-                    }
-                }
+                ops.extend(Self::apply_fill(fill));
+                ops.extend(Self::apply_stroke(stroke));
+
+                ops
+            }
+            DrawCmd::Arc {
+                cx,
+                cy,
+                r,
+                start_angle,
+                end_angle,
+                fill,
+                stroke,
+            } => {
+                let mut ops = Vec::new();
+
+                ops.push(CanvasOp::BeginPath);
+                ops.push(CanvasOp::MoveTo(*cx, *cy));
+                ops.push(CanvasOp::LineTo(
+                    cx + r * start_angle.cos(),
+                    cy + r * start_angle.sin(),
+                ));
+                ops.push(CanvasOp::Arc(*cx, *cy, *r, *start_angle, *end_angle, false));
+                ops.push(CanvasOp::ClosePath);
+                ops.extend(Self::apply_fill(fill));
+                ops.extend(Self::apply_stroke(stroke));
 
                 ops
             }
@@ -181,9 +219,32 @@ impl DrawCmd {
                 ops.push(CanvasOp::SetTextAlign(anchor.to_string()));
                 ops.push(CanvasOp::SetTextBaseline(baseline.to_string()));
 
-                if let FillStyle::Color(color) = &style.fill {
-                    ops.push(CanvasOp::SetFillStyle(color.clone()));
-                    ops.push(CanvasOp::FillText(content.clone(), *x, *y));
+                match &style.fill {
+                    FillStyle::Color(color) => {
+                        ops.push(CanvasOp::SetFillStyle(color.clone()));
+                        ops.push(CanvasOp::FillText(content.clone(), *x, *y));
+                    }
+                    FillStyle::Gradient(gradient) => {
+                        let id = format!("g{}", GRADIENT_COUNTER.fetch_add(1, Ordering::Relaxed));
+                        match &gradient.kind {
+                            GradientKind::Linear { x0, y0, x1, y1 } => {
+                                ops.push(CanvasOp::CreateLinearGradient(
+                                    id.clone(), *x0, *y0, *x1, *y1,
+                                ));
+                            }
+                            GradientKind::Radial { x0, y0, r0, x1, y1, r1 } => {
+                                ops.push(CanvasOp::CreateRadialGradient(
+                                    id.clone(), *x0, *y0, *r0, *x1, *y1, *r1,
+                                ));
+                            }
+                        }
+                        for stop in &gradient.stops {
+                            ops.push(CanvasOp::AddColorStop(id.clone(), stop.offset, stop.color.clone()));
+                        }
+                        ops.push(CanvasOp::SetFillStyleToGradient(id));
+                        ops.push(CanvasOp::FillText(content.clone(), *x, *y));
+                    }
+                    FillStyle::None => {}
                 }
 
                 ops
@@ -230,19 +291,59 @@ impl DrawCmd {
         ops.push(CanvasOp::QuadraticCurveTo(x, y, x + r, y));
         ops.push(CanvasOp::ClosePath);
 
-        if let Some(fill_style) = fill {
-            if let FillStyle::Color(color) = fill_style {
-                ops.push(CanvasOp::SetFillStyle(color.clone()));
-                ops.push(CanvasOp::Fill);
-            }
-        }
-        if let Some(stroke_style) = stroke {
-            if let StrokeStyle::Color(color) = stroke_style {
-                ops.push(CanvasOp::SetStrokeStyle(color.clone()));
-                ops.push(CanvasOp::Stroke);
-            }
-        }
+        ops.extend(Self::apply_fill(fill));
+        ops.extend(Self::apply_stroke(stroke));
 
+        ops
+    }
+
+    /// 根据 FillStyle 生成填充操作
+    fn apply_fill(fill: &Option<FillStyle>) -> Vec<CanvasOp> {
+        let mut ops = Vec::new();
+        if let Some(fill_style) = fill {
+            match fill_style {
+                FillStyle::Color(color) => {
+                    ops.push(CanvasOp::SetFillStyle(color.clone()));
+                    ops.push(CanvasOp::Fill);
+                }
+                FillStyle::Gradient(gradient) => {
+                    let id = format!("g{}", GRADIENT_COUNTER.fetch_add(1, Ordering::Relaxed));
+                    match &gradient.kind {
+                        GradientKind::Linear { x0, y0, x1, y1 } => {
+                            ops.push(CanvasOp::CreateLinearGradient(
+                                id.clone(), *x0, *y0, *x1, *y1,
+                            ));
+                        }
+                        GradientKind::Radial { x0, y0, r0, x1, y1, r1 } => {
+                            ops.push(CanvasOp::CreateRadialGradient(
+                                id.clone(), *x0, *y0, *r0, *x1, *y1, *r1,
+                            ));
+                        }
+                    }
+                    for stop in &gradient.stops {
+                        ops.push(CanvasOp::AddColorStop(id.clone(), stop.offset, stop.color.clone()));
+                    }
+                    ops.push(CanvasOp::SetFillStyleToGradient(id));
+                    ops.push(CanvasOp::Fill);
+                }
+                FillStyle::None => {}
+            }
+        }
+        ops
+    }
+
+    /// 根据 StrokeStyle 生成描边操作
+    fn apply_stroke(stroke: &Option<StrokeStyle>) -> Vec<CanvasOp> {
+        let mut ops = Vec::new();
+        if let Some(stroke_style) = stroke {
+            match stroke_style {
+                StrokeStyle::Color(color) => {
+                    ops.push(CanvasOp::SetStrokeStyle(color.clone()));
+                    ops.push(CanvasOp::Stroke);
+                }
+                StrokeStyle::None => {}
+            }
+        }
         ops
     }
 }
@@ -335,6 +436,16 @@ pub enum CanvasOp {
     FillText(String, f64, f64),
     /// 描边文本
     StrokeText(String, f64, f64),
+    /// 创建线性渐变，返回渐变 ID
+    CreateLinearGradient(String, f64, f64, f64, f64),
+    /// 创建径向渐变，返回渐变 ID
+    CreateRadialGradient(String, f64, f64, f64, f64, f64, f64),
+    /// 添加渐变色标
+    AddColorStop(String, f64, String),
+    /// 设置填充样式为渐变
+    SetFillStyleToGradient(String),
+    /// 设置描边样式为渐变
+    SetStrokeStyleToGradient(String),
 }
 
 /// 渲染输出

@@ -91,3 +91,43 @@
 **解决方案**：`compute_axis_layout` 新增 `include_zero` 参数。`compute_layout` 中 `spec.mark == Mark::Bar` 时为 Y 轴传 `true`，确保 domain 包含 0。其他图表类型传 `false`（位置编码不需要从 0 开始）。
 
 **解决日期**：2026-05-07
+
+## Resolved: 11 种新图表类型实现
+
+**原始需求**：deneb-rs 仅支持 4 种图表（Line/Bar/Scatter/Area），需要扩展到 15 种以覆盖常见可视化场景。
+
+**解决方案**：
+1. Mark 枚举扩展 4→15 变体
+2. Encoding 新增 7 个可选通道（open/high/low/close/theta/size/color2）
+3. DrawCmd 新增 Arc 变体支持饼图/雷达图
+4. 移植 5 个算法模块（kde, beeswarm, sankey_layout, chord_layout, contour）
+5. 11 个独立图表渲染器文件
+6. WIT 层完整支持所有新 Mark 类型
+7. 15 个 demo binary + 11 个文档页
+8. 共享渲染辅助提取到 chart/shared.rs
+
+**解决日期**：2026-05-07
+
+## Resolved: Y 轴 include_zero 扩展到 Histogram/Waterfall
+
+**原始问题**（cc-review P1）：`compute_axis_layout` 的 `include_zero` 仅检查 `Mark::Bar`，Histogram/Waterfall 的 `layout.y_axis` 网格线不包含 0，导致网格与柱基线不对齐。
+
+**解决方案**：`matches!(spec.mark, Mark::Bar | Mark::Histogram | Mark::Waterfall)`
+
+**解决日期**：2026-05-07
+
+## Resolved: 图表渲染代码重复
+
+**原始问题**（cc-review P1）：15 个图表文件中 background/grid/axes/title 渲染逻辑高度重复。
+
+**解决方案**：提取 `chart/shared.rs` 公共模块（6 个函数），所有直角坐标图表（9 个）和部分自定义图表（4 个）迁移使用。bar.rs 消除 214 行重复代码。
+
+**解决日期**：2026-05-07
+
+## Resolved: Encoding color2 字段缺失
+
+**原始问题**（cc-review P2）：design.md 定义了 `color2: Option<Field>` 渐变终点色字段，但 Encoding 中未实现。
+
+**解决方案**：添加 `color2` 字段 + builder 方法 + 测试。当前无图表使用，API 完整性补齐。
+
+**解决日期**：2026-05-07

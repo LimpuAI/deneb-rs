@@ -2,6 +2,9 @@
 //!
 //! 提供各种图表类型的渲染实现，包括折线图、柱状图等。
 
+/// Shared rendering helpers
+pub mod shared;
+
 pub mod line;
 pub mod bar;
 
@@ -10,6 +13,39 @@ pub mod scatter;
 
 /// AreaChart 实现
 pub mod area;
+
+/// HistogramChart 实现
+pub mod histogram;
+
+/// WaterfallChart 实现
+pub mod waterfall;
+
+/// CandlestickChart 实现
+pub mod candlestick;
+
+/// BoxPlotChart 实现
+pub mod box_plot;
+
+/// StripChart 实现
+pub mod strip;
+
+/// HeatmapChart 实现
+pub mod heatmap;
+
+/// PieChart 实现
+pub mod pie;
+
+/// RadarChart 实现
+pub mod radar;
+
+/// SankeyChart 实现
+pub mod sankey;
+
+/// ChordChart 实现
+pub mod chord;
+
+/// ContourChart 实现
+pub mod contour_chart;
 
 use deneb_core::{RenderLayers, HitRegion};
 
@@ -78,6 +114,17 @@ pub use line::LineChart;
 pub use bar::BarChart;
 pub use scatter::ScatterChart;
 pub use area::AreaChart;
+pub use histogram::HistogramChart;
+pub use waterfall::WaterfallChart;
+pub use candlestick::CandlestickChart;
+pub use box_plot::BoxPlotChart;
+pub use strip::StripChart;
+pub use sankey::SankeyChart;
+pub use chord::ChordChart;
+pub use contour_chart::ContourChart;
+pub use heatmap::HeatmapChart;
+pub use pie::PieChart;
+pub use radar::RadarChart;
 
 #[cfg(test)]
 mod tests {

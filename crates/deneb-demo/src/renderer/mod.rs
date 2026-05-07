@@ -139,6 +139,9 @@ impl TinySkiaRenderer {
                     self.render_cmd(item);
                 }
             }
+            DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke } => {
+                self.draw_arc(*cx, *cy, *r, *start_angle, *end_angle, fill, stroke);
+            }
         }
     }
 
@@ -315,6 +318,67 @@ impl TinySkiaRenderer {
         );
 
         if let Some(path) = path {
+            if let Some(fill_style) = fill {
+                if let Some(paint) = self.fill_to_paint(fill_style) {
+                    self.pixmap.fill_path(
+                        &path,
+                        &paint,
+                        tiny_skia::FillRule::Winding,
+                        tiny_skia::Transform::identity(),
+                        None,
+                    );
+                }
+            }
+            if let Some(stroke_style) = stroke {
+                if let Some(paint) = self.stroke_to_paint(stroke_style) {
+                    let sk_stroke = tiny_skia::Stroke::default();
+                    self.pixmap.stroke_path(
+                        &path,
+                        &paint,
+                        &sk_stroke,
+                        tiny_skia::Transform::identity(),
+                        None,
+                    );
+                }
+            }
+        }
+    }
+
+    fn draw_arc(
+        &mut self,
+        cx: f64, cy: f64, r: f64,
+        start_angle: f64, end_angle: f64,
+        fill: &Option<FillStyle>,
+        stroke: &Option<StrokeStyle>,
+    ) {
+        let mut pb = tiny_skia::PathBuilder::new();
+        let steps = 64;
+        let sweep = end_angle - start_angle;
+
+        // Start with a line to center for filled arc (pie slice)
+        if fill.is_some() {
+            let sx = cx + r * start_angle.cos();
+            let sy = cy + r * start_angle.sin();
+            pb.move_to(cx as f32, cy as f32);
+            pb.line_to(sx as f32, sy as f32);
+        }
+
+        for i in 0..=steps {
+            let t = start_angle + sweep * (i as f64 / steps as f64);
+            let px = cx + r * t.cos();
+            let py = cy + r * t.sin();
+            if i == 0 && pb.is_empty() {
+                pb.move_to(px as f32, py as f32);
+            } else {
+                pb.line_to(px as f32, py as f32);
+            }
+        }
+
+        if fill.is_some() {
+            pb.close();
+        }
+
+        if let Some(path) = pb.finish() {
             if let Some(fill_style) = fill {
                 if let Some(paint) = self.fill_to_paint(fill_style) {
                     self.pixmap.fill_path(

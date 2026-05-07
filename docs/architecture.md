@@ -38,7 +38,7 @@ flowchart TB
 | Crate | 职责 | 关键导出 |
 |-------|------|---------|
 | **deneb-core** | 数据类型、绘图指令、比例尺、解析器 | `DataTable`, `DrawCmd`, `Scale`, `RenderLayers` |
-| **deneb-component** | 图表类型实现、布局、主题 | `LineChart`, `BarChart`, `ChartSpec`, `Theme` |
+| **deneb-component** | 图表类型实现、布局、主题 | `LineChart`, `BarChart`, `ScatterChart`, `AreaChart`, `PieChart`, `HistogramChart`, `BoxPlotChart`, `WaterfallChart`, `CandlestickChart`, `RadarChart`, `HeatmapChart`, `StripChart`, `SankeyChart`, `ChordChart`, `ContourChart`, `ChartSpec`, `Theme` |
 | **deneb-wit** | WASI 集成层，类型转换 | `WitDrawCmd`, `WitRenderResult`, `lib_mode` |
 | **deneb-wit-wasm** | WASI Component Model 导出 | WIT 接口实现 |
 | **deneb-demo** | 桌面演示 + WASM Host | `TinySkiaRenderer`, `WasmHost`, `DemoApp` |
@@ -125,6 +125,7 @@ classDiagram
         Path
         Text
         Group
+        Arc
     }
 
     class PathSegment {
@@ -142,6 +143,7 @@ classDiagram
         Color(String)
         Gradient(Gradient)
         None
+        Note: Gradient 用于 Heatmap 颜色映射
     }
 
     class StrokeStyle {
@@ -188,6 +190,35 @@ flowchart TB
 ```
 
 每层独立渲染，支持脏标记（dirty flag）的增量更新。
+
+## 算法模块
+
+deneb-core 包含专用算法模块，为特定图表类型提供底层计算能力：
+
+```mermaid
+flowchart LR
+    subgraph deneb_core/algorithms
+        kde[kde.rs<br/>核密度估计]
+        bee[beeswarm.rs<br/>蜂群布局]
+        sankey[sankey_layout.rs<br/>桑基布局]
+        chord[chord_layout.rs<br/>和弦布局]
+        contour[contour.rs<br/>Marching Squares]
+    end
+
+    kde --> BoxPlot
+    bee --> Strip
+    sankey --> Sankey
+    chord --> Chord
+    contour --> Contour
+```
+
+| 算法模块 | 用途 | 图表 |
+|---------|------|------|
+| kde | 核密度估计 | BoxPlot（密度曲线） |
+| beeswarm | 蜂群布局算法 | Strip（避免点重叠） |
+| sankey_layout | 桑基图节点/边布局 | Sankey |
+| chord_layout | 和弦图布局计算 | Chord |
+| contour | Marching Squares 等值线生成 | Contour |
 
 ## 图表组装流程
 
@@ -348,3 +379,4 @@ flowchart LR
 | WIT 类型 | 展平 record | WIT 不支持递归类型 |
 | 主题系统 | Trait 抽象 | 可扩展（DefaultTheme、DarkTheme） |
 | 图层系统 | 7 层固定 + 自定义 | 脏标记支持增量渲染 |
+| 渲染辅助提取 | shared.rs 公共函数 | 消除 15 个图表文件间的重复代码 |

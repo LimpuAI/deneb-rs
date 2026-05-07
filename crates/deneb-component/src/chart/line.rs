@@ -2,7 +2,7 @@
 //!
 //! 将 ChartSpec 和 DataTable 渲染为折线图的 Canvas 指令。
 
-use crate::layout::{compute_layout, LayoutResult, PlotArea};
+use crate::layout::{compute_layout, PlotArea};
 use crate::spec::ChartSpec;
 use crate::theme::Theme;
 use crate::chart::ChartOutput;
@@ -116,16 +116,14 @@ impl LineChart {
         }
 
         // 6. 生成轴指令（grid + axis layers）
-        let (grid_commands, axis_commands) = Self::generate_axis_commands(
+        let (grid_commands, axis_commands) = super::shared::render_cartesian_grid_and_axes(
             &layout,
             theme,
         );
 
         // 7. 生成标题指令
-        let title_commands = Self::generate_title_commands(spec, &layout.plot_area, theme);
-
         // 8. 生成背景指令
-        let background_commands = Self::generate_background_commands(spec, theme);
+        let background_commands = super::shared::render_background(spec, theme);
 
         // 9. 组装 RenderLayers
         let mut layers = RenderLayers::new();
@@ -144,7 +142,9 @@ impl LineChart {
         layers.update_layer(LayerKind::Data, data_output);
 
         // Title 层
-        layers.update_layer(LayerKind::Title, title_commands);
+        if let Some(title) = &spec.title {
+            layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &layout.plot_area));
+        }
 
         Ok(ChartOutput {
             layers,
@@ -157,7 +157,7 @@ impl LineChart {
         let mut layers = RenderLayers::new();
 
         // 生成背景
-        let background_commands = Self::generate_background_commands(spec, theme);
+        let background_commands = super::shared::render_background(spec, theme);
         layers.update_layer(LayerKind::Background, background_commands);
 
         ChartOutput {
@@ -377,156 +377,6 @@ impl LineChart {
             fill: None,
             stroke: Some(StrokeStyle::Color(color.to_string())),
         }
-    }
-
-    /// 生成网格和坐标轴指令
-    fn generate_axis_commands<T: Theme>(
-        layout: &LayoutResult,
-        theme: &T,
-    ) -> (RenderOutput, RenderOutput) {
-        let mut grid_commands = Vec::new();
-        let mut axis_commands = Vec::new();
-
-        // X 轴网格和刻度
-        if let Some(x_axis) = &layout.x_axis {
-            // 网格线（垂直线）
-            for &pos in &x_axis.tick_positions {
-                grid_commands.push(DrawCmd::Path {
-                    segments: vec![
-                        PathSegment::MoveTo(pos, layout.plot_area.y),
-                        PathSegment::LineTo(pos, layout.plot_area.y + layout.plot_area.height),
-                    ],
-                    fill: None,
-                    stroke: Some(theme.grid_stroke().clone()),
-                });
-            }
-
-            // 轴线
-            axis_commands.push(DrawCmd::Path {
-                segments: vec![
-                    PathSegment::MoveTo(layout.plot_area.x, x_axis.position),
-                    PathSegment::LineTo(
-                        layout.plot_area.x + layout.plot_area.width,
-                        x_axis.position,
-                    ),
-                ],
-                fill: None,
-                stroke: Some(theme.axis_stroke().clone()),
-            });
-
-            // 刻度标签
-            let tick_size = theme.layout_config().tick_length;
-            for (i, &pos) in x_axis.tick_positions.iter().enumerate() {
-                if let Some(label) = x_axis.tick_labels.get(i) {
-                    let text = DrawCmd::Text {
-                        x: pos,
-                        y: x_axis.position + tick_size + 2.0,
-                        content: label.clone(),
-                        style: TextStyle::new()
-                            .with_font_size(theme.tick_font_size())
-                            .with_font_family(theme.font_family())
-                            .with_fill(FillStyle::Color(theme.foreground_color().to_string())),
-                        anchor: TextAnchor::Middle,
-                        baseline: TextBaseline::Top,
-                    };
-                    axis_commands.push(text);
-                }
-            }
-        }
-
-        // Y 轴网格和刻度
-        if let Some(y_axis) = &layout.y_axis {
-            // 网格线（水平线）
-            for &pos in &y_axis.tick_positions {
-                grid_commands.push(DrawCmd::Path {
-                    segments: vec![
-                        PathSegment::MoveTo(layout.plot_area.x, pos),
-                        PathSegment::LineTo(layout.plot_area.x + layout.plot_area.width, pos),
-                    ],
-                    fill: None,
-                    stroke: Some(theme.grid_stroke().clone()),
-                });
-            }
-
-            // 轴线
-            axis_commands.push(DrawCmd::Path {
-                segments: vec![
-                    PathSegment::MoveTo(y_axis.position, layout.plot_area.y),
-                    PathSegment::LineTo(
-                        y_axis.position,
-                        layout.plot_area.y + layout.plot_area.height,
-                    ),
-                ],
-                fill: None,
-                stroke: Some(theme.axis_stroke().clone()),
-            });
-
-            // 刻度标签
-            let tick_size = theme.layout_config().tick_length;
-            for (i, &pos) in y_axis.tick_positions.iter().enumerate() {
-                if let Some(label) = y_axis.tick_labels.get(i) {
-                    let text = DrawCmd::Text {
-                        x: y_axis.position - tick_size - 2.0,
-                        y: pos,
-                        content: label.clone(),
-                        style: TextStyle::new()
-                            .with_font_size(theme.tick_font_size())
-                            .with_font_family(theme.font_family())
-                            .with_fill(FillStyle::Color(theme.foreground_color().to_string())),
-                        anchor: TextAnchor::End,
-                        baseline: TextBaseline::Middle,
-                    };
-                    axis_commands.push(text);
-                }
-            }
-        }
-
-        (
-            RenderOutput::from_commands(grid_commands),
-            RenderOutput::from_commands(axis_commands),
-        )
-    }
-
-    /// 生成标题指令
-    fn generate_title_commands<T: Theme>(
-        spec: &ChartSpec,
-        plot_area: &PlotArea,
-        theme: &T,
-    ) -> RenderOutput {
-        if let Some(title) = &spec.title {
-            let title_cmd = DrawCmd::Text {
-                x: plot_area.x + plot_area.width / 2.0,
-                y: plot_area.y - 10.0,
-                content: title.clone(),
-                style: TextStyle::new()
-                    .with_font_size(theme.title_font_size())
-                    .with_font_family(theme.font_family())
-                    .with_font_weight(FontWeight::Bold)
-                    .with_fill(FillStyle::Color(theme.title_color().to_string())),
-                anchor: TextAnchor::Middle,
-                baseline: TextBaseline::Bottom,
-            };
-            RenderOutput::from_commands(vec![title_cmd])
-        } else {
-            RenderOutput::new()
-        }
-    }
-
-    /// 生成背景指令
-    fn generate_background_commands<T: Theme>(
-        spec: &ChartSpec,
-        theme: &T,
-    ) -> RenderOutput {
-        let bg_cmd = DrawCmd::Rect {
-            x: 0.0,
-            y: 0.0,
-            width: spec.width,
-            height: spec.height,
-            fill: Some(FillStyle::Color(theme.background_color().to_string())),
-            stroke: None,
-            corner_radius: None,
-        };
-        RenderOutput::from_commands(vec![bg_cmd])
     }
 
     /// 生成命中测试区域

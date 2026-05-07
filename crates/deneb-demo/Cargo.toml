@@ -21,6 +21,50 @@ path = "src/bin/demo_scatter.rs"
 name = "demo-area"
 path = "src/bin/demo_area.rs"
 
+[[bin]]
+name = "demo-pie"
+path = "src/bin/demo_pie.rs"
+
+[[bin]]
+name = "demo-histogram"
+path = "src/bin/demo_histogram.rs"
+
+[[bin]]
+name = "demo-boxplot"
+path = "src/bin/demo_boxplot.rs"
+
+[[bin]]
+name = "demo-waterfall"
+path = "src/bin/demo_waterfall.rs"
+
+[[bin]]
+name = "demo-candlestick"
+path = "src/bin/demo_candlestick.rs"
+
+[[bin]]
+name = "demo-radar"
+path = "src/bin/demo_radar.rs"
+
+[[bin]]
+name = "demo-heatmap"
+path = "src/bin/demo_heatmap.rs"
+
+[[bin]]
+name = "demo-strip"
+path = "src/bin/demo_strip.rs"
+
+[[bin]]
+name = "demo-sankey"
+path = "src/bin/demo_sankey.rs"
+
+[[bin]]
+name = "demo-chord"
+path = "src/bin/demo_chord.rs"
+
+[[bin]]
+name = "demo-contour"
+path = "src/bin/demo_contour.rs"
+
 [dependencies]
 deneb-core = { path = "../deneb-core", features = ["csv", "json", "arrow-format", "parquet-format"] }
 deneb-component = { path = "../deneb-component" }

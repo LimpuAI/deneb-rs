@@ -16,6 +16,28 @@ pub enum Mark {
     Scatter,
     /// 面积
     Area,
+    /// 饼图
+    Pie,
+    /// 直方图
+    Histogram,
+    /// 箱线图
+    BoxPlot,
+    /// 瀑布图
+    Waterfall,
+    /// K 线图
+    Candlestick,
+    /// 雷达图
+    Radar,
+    /// 热力图
+    Heatmap,
+    /// 条带图
+    Strip,
+    /// 桑基图
+    Sankey,
+    /// 和弦图
+    Chord,
+    /// 等高线图
+    Contour,
 }
 
 impl fmt::Display for Mark {
@@ -25,6 +47,17 @@ impl fmt::Display for Mark {
             Mark::Bar => write!(f, "bar"),
             Mark::Scatter => write!(f, "scatter"),
             Mark::Area => write!(f, "area"),
+            Mark::Pie => write!(f, "pie"),
+            Mark::Histogram => write!(f, "histogram"),
+            Mark::BoxPlot => write!(f, "boxplot"),
+            Mark::Waterfall => write!(f, "waterfall"),
+            Mark::Candlestick => write!(f, "candlestick"),
+            Mark::Radar => write!(f, "radar"),
+            Mark::Heatmap => write!(f, "heatmap"),
+            Mark::Strip => write!(f, "strip"),
+            Mark::Sankey => write!(f, "sankey"),
+            Mark::Chord => write!(f, "chord"),
+            Mark::Contour => write!(f, "contour"),
         }
     }
 }
@@ -137,6 +170,18 @@ pub struct Encoding {
     pub color: Option<Field>,
     /// 大小通道
     pub size: Option<Field>,
+    /// 开盘价通道（K 线图）
+    pub open: Option<Field>,
+    /// 最高价通道（K 线图）
+    pub high: Option<Field>,
+    /// 最低价通道（K 线图）
+    pub low: Option<Field>,
+    /// 收盘价通道（K 线图）
+    pub close: Option<Field>,
+    /// 角度通道（饼图）
+    pub theta: Option<Field>,
+    /// 渐变终点色
+    pub color2: Option<Field>,
 }
 
 impl Encoding {
@@ -166,6 +211,42 @@ impl Encoding {
     /// 设置大小通道
     pub fn size(mut self, field: Field) -> Self {
         self.size = Some(field);
+        self
+    }
+
+    /// 设置开盘价通道
+    pub fn open(mut self, field: Field) -> Self {
+        self.open = Some(field);
+        self
+    }
+
+    /// 设置最高价通道
+    pub fn high(mut self, field: Field) -> Self {
+        self.high = Some(field);
+        self
+    }
+
+    /// 设置最低价通道
+    pub fn low(mut self, field: Field) -> Self {
+        self.low = Some(field);
+        self
+    }
+
+    /// 设置收盘价通道
+    pub fn close(mut self, field: Field) -> Self {
+        self.close = Some(field);
+        self
+    }
+
+    /// 设置角度通道
+    pub fn theta(mut self, field: Field) -> Self {
+        self.theta = Some(field);
+        self
+    }
+
+    /// 设置渐变终点色
+    pub fn color2(mut self, field: Field) -> Self {
+        self.color2 = Some(field);
         self
     }
 }
@@ -305,6 +386,17 @@ mod tests {
         assert_eq!(Mark::Bar.to_string(), "bar");
         assert_eq!(Mark::Scatter.to_string(), "scatter");
         assert_eq!(Mark::Area.to_string(), "area");
+        assert_eq!(Mark::Pie.to_string(), "pie");
+        assert_eq!(Mark::Histogram.to_string(), "histogram");
+        assert_eq!(Mark::BoxPlot.to_string(), "boxplot");
+        assert_eq!(Mark::Waterfall.to_string(), "waterfall");
+        assert_eq!(Mark::Candlestick.to_string(), "candlestick");
+        assert_eq!(Mark::Radar.to_string(), "radar");
+        assert_eq!(Mark::Heatmap.to_string(), "heatmap");
+        assert_eq!(Mark::Strip.to_string(), "strip");
+        assert_eq!(Mark::Sankey.to_string(), "sankey");
+        assert_eq!(Mark::Chord.to_string(), "chord");
+        assert_eq!(Mark::Contour.to_string(), "contour");
     }
 
     #[test]
@@ -360,6 +452,66 @@ mod tests {
         assert!(encoding.color.is_some());
         assert!(encoding.size.is_some());
         assert_eq!(encoding.x.as_ref().unwrap().name, "date");
+    }
+
+    #[test]
+    fn test_encoding_candlestick_channels() {
+        let encoding = Encoding::new()
+            .x(Field::temporal("date"))
+            .y(Field::quantitative("close"))
+            .open(Field::quantitative("open"))
+            .high(Field::quantitative("high"))
+            .low(Field::quantitative("low"))
+            .close(Field::quantitative("close"));
+
+        assert!(encoding.open.is_some());
+        assert!(encoding.high.is_some());
+        assert!(encoding.low.is_some());
+        assert!(encoding.close.is_some());
+        assert_eq!(encoding.open.as_ref().unwrap().name, "open");
+        assert_eq!(encoding.high.as_ref().unwrap().name, "high");
+        assert_eq!(encoding.low.as_ref().unwrap().name, "low");
+        assert_eq!(encoding.close.as_ref().unwrap().name, "close");
+    }
+
+    #[test]
+    fn test_encoding_theta_channel() {
+        let encoding = Encoding::new()
+            .x(Field::nominal("category"))
+            .y(Field::quantitative("value"))
+            .theta(Field::quantitative("angle"));
+
+        assert!(encoding.theta.is_some());
+        assert_eq!(encoding.theta.as_ref().unwrap().name, "angle");
+    }
+
+    #[test]
+    fn test_encoding_color2_channel() {
+        let encoding = Encoding::new()
+            .x(Field::nominal("category"))
+            .y(Field::quantitative("value"))
+            .color(Field::quantitative("start"))
+            .color2(Field::quantitative("end"));
+
+        assert!(encoding.color.is_some());
+        assert!(encoding.color2.is_some());
+        assert_eq!(encoding.color.as_ref().unwrap().name, "start");
+        assert_eq!(encoding.color2.as_ref().unwrap().name, "end");
+    }
+
+    #[test]
+    fn test_encoding_default_channels_none() {
+        let encoding = Encoding::default();
+        assert!(encoding.x.is_none());
+        assert!(encoding.y.is_none());
+        assert!(encoding.color.is_none());
+        assert!(encoding.size.is_none());
+        assert!(encoding.open.is_none());
+        assert!(encoding.high.is_none());
+        assert!(encoding.low.is_none());
+        assert!(encoding.close.is_none());
+        assert!(encoding.theta.is_none());
+        assert!(encoding.color2.is_none());
     }
 
     #[test]

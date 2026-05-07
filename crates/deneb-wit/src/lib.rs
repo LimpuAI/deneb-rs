@@ -45,6 +45,12 @@ pub mod wit_types {
         pub x_field: String,
         pub y_field: String,
         pub color_field: Option<String>,
+        pub open_field: Option<String>,
+        pub high_field: Option<String>,
+        pub low_field: Option<String>,
+        pub close_field: Option<String>,
+        pub theta_field: Option<String>,
+        pub size_field: Option<String>,
         pub width: f64,
         pub height: f64,
         pub title: Option<String>,
@@ -226,6 +232,17 @@ pub mod convert {
             "bar" => Ok(Mark::Bar),
             "scatter" => Ok(Mark::Scatter),
             "area" => Ok(Mark::Area),
+            "pie" => Ok(Mark::Pie),
+            "histogram" => Ok(Mark::Histogram),
+            "boxplot" => Ok(Mark::BoxPlot),
+            "waterfall" => Ok(Mark::Waterfall),
+            "candlestick" => Ok(Mark::Candlestick),
+            "radar" => Ok(Mark::Radar),
+            "heatmap" => Ok(Mark::Heatmap),
+            "strip" => Ok(Mark::Strip),
+            "sankey" => Ok(Mark::Sankey),
+            "chord" => Ok(Mark::Chord),
+            "contour" => Ok(Mark::Contour),
             _ => Err(ConvertError::UnsupportedMark(s.to_string())),
         }
     }
@@ -266,6 +283,30 @@ pub mod convert {
             encoding = encoding.color(Field::nominal(color_field));
         }
 
+        // OHLC channels (Candlestick)
+        if let Some(open_field) = &wit_spec.open_field {
+            encoding = encoding.open(Field::quantitative(open_field));
+        }
+        if let Some(high_field) = &wit_spec.high_field {
+            encoding = encoding.high(Field::quantitative(high_field));
+        }
+        if let Some(low_field) = &wit_spec.low_field {
+            encoding = encoding.low(Field::quantitative(low_field));
+        }
+        if let Some(close_field) = &wit_spec.close_field {
+            encoding = encoding.close(Field::quantitative(close_field));
+        }
+
+        // Theta (Pie)
+        if let Some(theta_field) = &wit_spec.theta_field {
+            encoding = encoding.theta(Field::quantitative(theta_field));
+        }
+
+        // Size (Sankey/Chord)
+        if let Some(size_field) = &wit_spec.size_field {
+            encoding = encoding.size(Field::quantitative(size_field));
+        }
+
         let mut builder = deneb_component::ChartSpec::builder()
             .mark(mark)
             .encoding(encoding)
@@ -303,6 +344,23 @@ pub mod convert {
                 vec![WitDrawCmd {
                     cmd_type: "circle".to_string(),
                     params: vec![cx, cy, r],
+                    fill: fill.and_then(|f| match f {
+                        deneb_core::FillStyle::Color(c) => Some(c),
+                        _ => None,
+                    }),
+                    stroke: stroke.and_then(|s| match s {
+                        deneb_core::StrokeStyle::Color(c) => Some(c),
+                        deneb_core::StrokeStyle::None => None,
+                    }),
+                    stroke_width: None,
+                    text_content: None,
+                    group_depth: depth,
+                }]
+            }
+            DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke } => {
+                vec![WitDrawCmd {
+                    cmd_type: "arc".to_string(),
+                    params: vec![cx, cy, r, start_angle, end_angle],
                     fill: fill.and_then(|f| match f {
                         deneb_core::FillStyle::Color(c) => Some(c),
                         _ => None,
@@ -530,6 +588,50 @@ pub mod lib_mode {
             }
             deneb_component::Mark::Area => {
                 deneb_component::AreaChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Pie => {
+                deneb_component::PieChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Histogram => {
+                deneb_component::HistogramChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::BoxPlot => {
+                deneb_component::BoxPlotChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Waterfall => {
+                deneb_component::WaterfallChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Candlestick => {
+                deneb_component::CandlestickChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Radar => {
+                deneb_component::RadarChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Heatmap => {
+                deneb_component::HeatmapChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Strip => {
+                deneb_component::StripChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Sankey => {
+                deneb_component::SankeyChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Chord => {
+                deneb_component::ChordChart::render(&chart_spec, &theme, &table)
+                    .map_err(|e| e.to_string())?
+            }
+            deneb_component::Mark::Contour => {
+                deneb_component::ContourChart::render(&chart_spec, &theme, &table)
                     .map_err(|e| e.to_string())?
             }
         };

@@ -7,11 +7,11 @@
 
 | Crate | 职责 | 代码行数 | 测试数 |
 |-------|------|---------|--------|
-| deneb-core | 数据类型、绘图指令、比例尺、解析器、降采样 | 5934 | 134 + 5 doc |
-| deneb-component | 图表类型（Line/Bar/Scatter/Area）、布局、主题 | 5400 | 100 |
-| deneb-wit | WASI 集成层、WIT 类型转换、lib_mode | 1200 | 20 |
+| deneb-core | 数据类型、绘图指令、比例尺、解析器、降采样、算法 | ~7500 | 174 + 5 doc |
+| deneb-component | 图表类型（15 种）、布局、主题、共享渲染辅助 | ~9500 | 174 |
+| deneb-wit | WASI 集成层、WIT 类型转换、lib_mode | ~1500 | 20 |
 | deneb-wit-wasm | WASI Component Model 导出（wit-bindgen 0.57） | 400 | 4 集成 |
-| deneb-demo | 桌面演示（tiny-skia + wasmtime host） | 1800 | — |
+| deneb-demo | 桌面演示（tiny-skia + wasmtime host，15 种图表） | ~3500 | — |
 
 ## 关键依赖
 
@@ -41,12 +41,24 @@
 - Bar（柱状图，band scale + 自动间距）
 - Scatter（散点图，支持大小/颜色映射）
 - Area（面积图，支持堆叠 + 多系列）
+- Pie（饼图/环形图，Arc 扇形 + 可选内半径）
+- Histogram（直方图，Sturges 自动分箱，Y 轴从 0）
+- BoxPlot（箱线图，五数概括 + IQR 异常值检测）
+- Waterfall（瀑布图，累计基线 + 正负分色，Y 轴从 0）
+- Candlestick（K 线图，OHLC + 涨跌色）
+- Radar（雷达图，极坐标多边形 + 多系列）
+- Heatmap（热力图，颜色映射 + Gradient 填充）
+- Strip（蜂群图，beeswarm 布局避免重叠）
+- Sankey（桑基图，Bézier ribbon + 节点/连线布局）
+- Chord（和弦图，环形 ribbon + 邻接矩阵布局）
+- Contour（等高线图，marching squares 算法）
 
 ### 主题系统
 - 5 个内置主题：Default、Dark、Forest、Nordic、Cappuccino
 - 语义色槽 + 结构色分离（10 色数据系列 + 独立 axis/grid/title 色）
 - LayoutConfig 结构体集中管理布局参数
-- Bar chart Y 轴强制 include zero（`compute_axis_layout` 的 `include_zero` 参数）
+- Bar chart Y 轴强制 include zero（`compute_axis_layout` 的 `include_zero` 参数，覆盖 Bar/Histogram/Waterfall）
+- 共享渲染辅助（`chart/shared.rs`：background, grid, axes, title）
 
 ### WASI 集成
 - WIT 接口：data-parser（csv/json/arrow/parquet）+ chart-renderer
@@ -67,6 +79,7 @@
 - WASM：wasm32-wasip2（cargo build -p deneb-wit-wasm --target wasm32-wasip2）
 
 ## 文档
-- docs/：Mint 框架（architecture, line-chart, bar-chart, scatter-chart, area-chart, webassembly, demo）
+- docs/：Mint 框架（architecture, 15 chart pages, webassembly, demo, introduction）
+- .specs/more-chart-types/：11 种新图表需求、设计、任务追踪、总结
 - .specs/wasm-arrow-parquet/：Arrow/Parquet 集成需求、设计、任务追踪
 - CLAUDE.md：开发规范、常见误区、Demo 运行方式
