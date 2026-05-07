@@ -21,6 +21,17 @@ Backend-agnostic Rust visualization library that outputs Canvas 2D instruction s
 | Bar | `Mark::Bar` | Categorical comparison |
 | Scatter | `Mark::Scatter` | Distribution, correlation |
 | Area | `Mark::Area` | Trend with magnitude |
+| Pie | `Mark::Pie` | Proportional comparison, donut chart |
+| Histogram | `Mark::Histogram` | Distribution, Sturges auto-binning |
+| BoxPlot | `Mark::BoxPlot` | Statistical summary, IQR outlier detection |
+| Waterfall | `Mark::Waterfall` | Cumulative increment/decrement |
+| Candlestick | `Mark::Candlestick` | OHLC financial chart |
+| Radar | `Mark::Radar` | Multi-dimensional polar comparison |
+| Heatmap | `Mark::Heatmap` | Color-mapped matrix |
+| Strip | `Mark::Strip` | Beeswarm distribution by category |
+| Sankey | `Mark::Sankey` | Flow diagram with Bézier ribbons |
+| Chord | `Mark::Chord` | Circular relationship diagram |
+| Contour | `Mark::Contour` | Isoline contour map (marching squares) |
 
 ## Quick Start
 
@@ -54,6 +65,11 @@ cargo build -p deneb-wit-wasm --target wasm32-wasip2 --release
 
 # Run demo with WASM path
 cargo run --bin demo-line -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
+
+# Parquet/Arrow demos need --deps for parser components
+cargo run --bin demo-scatter -- \
+  --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm \
+  --deps ../limpuai-wit/target/wasm32-wasip2/release
 ```
 
 ## Crate Structure
@@ -61,14 +77,14 @@ cargo run --bin demo-line -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.
 | Crate | Description |
 |-------|-------------|
 | [deneb-core](crates/deneb-core) | Data types, drawing instructions, scales, parsers, downsampling, interaction |
-| [deneb-component](crates/deneb-component) | Chart types (Line/Bar/Scatter/Area), layout engine, theme system |
+| [deneb-component](crates/deneb-component) | Chart types (15 types), layout engine, theme system, shared rendering helpers |
 | [deneb-wit](crates/deneb-wit) | WASI integration layer, WIT type conversion, lib_mode API |
-| [deneb-wit-wasm](crates/deneb-wit-wasm) | WASI Component Model export (wit-bindgen 0.51) |
+| [deneb-wit-wasm](crates/deneb-wit-wasm) | WASI Component Model export (wit-bindgen 0.57) |
 | [deneb-demo](crates/deneb-demo) | Desktop demo (tiny-skia + wasmtime host + winit window) |
 
 ## Demo
 
-Four demo binaries, each with native and WASM rendering paths:
+15 demo binaries, each with native and WASM rendering paths:
 
 ```bash
 # Native rendering
@@ -76,6 +92,17 @@ cargo run --bin demo-line
 cargo run --bin demo-bar
 cargo run --bin demo-scatter
 cargo run --bin demo-area
+cargo run --bin demo-pie
+cargo run --bin demo-histogram
+cargo run --bin demo-boxplot
+cargo run --bin demo-waterfall
+cargo run --bin demo-candlestick
+cargo run --bin demo-radar
+cargo run --bin demo-heatmap
+cargo run --bin demo-strip
+cargo run --bin demo-sankey
+cargo run --bin demo-chord
+cargo run --bin demo-contour
 
 # WASM rendering
 cargo run --bin demo-line -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.wasm
@@ -107,8 +134,8 @@ cargo run --bin demo-line -- --wasm target/wasm32-wasip2/release/deneb_wit_wasm.
 # Build
 cargo build --workspace
 
-# Test (248 tests)
-cargo test --workspace
+# Test (373 tests, excluding slow WASM integration tests)
+cargo test --workspace --exclude deneb-demo
 
 # Lint
 cargo clippy --workspace
