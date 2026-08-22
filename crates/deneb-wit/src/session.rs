@@ -324,6 +324,10 @@ impl ChartSession {
     /// Tier 2 演示附着:单系列 Bar 的峰值柱获得 1.8s 呼吸强调(opacity 1↔0.85,ping-pong)。
     /// 宿主对缓存指令本地插值 — 零 wasm 调用的循环动画主载体示范。
     fn attach_peak_emphasis(&mut self, result: &mut WitRenderResult) {
+        if self.anim_cfg.disable {
+            return; // 静态场景(ReducedMotion / 宿主显式禁用):不附着循环动画,
+                    // 宿主扫描不到 anim-desc → AnimStatus::Done,零持续重绘
+        }
         if self.spec.mark != Mark::Bar {
             return;
         }
@@ -800,8 +804,24 @@ mod tests {
         let mut s = ChartSession::new(spec, None).unwrap();
         s.update_data(b"category,value\nA,10\nB,20", "csv").unwrap();
         let r = s.render(0.0).unwrap();
-        // disable: t=0 也渲染最终态
+        // disable:t=0 也渲染最终态
         let layer = r.layers.iter().find(|l| l.kind == "data").unwrap();
         assert!(!layer.commands.is_empty());
+        // disable:不附着 Tier 2 循环(帧内零 anim-desc,宿主判 Done 零持续重绘)
+        assert!(
+            !r.layers.iter().any(|l| l.commands.iter().any(|c| c.anim.is_some())),
+            "disabled chart must carry no anim-desc"
+        );
+    }
+
+    #[test]
+    fn test_enabled_animation_attaches_tier2_loop() {
+        // 对照:未禁用的单系列 bar 附着峰值呼吸(宿主 Continue 的依据)
+        let mut s = session_with_data();
+        let r = s.render(1.0).unwrap();
+        assert!(
+            r.layers.iter().any(|l| l.commands.iter().any(|c| c.anim.is_some())),
+            "single-series bar should carry peak-emphasis anim-desc"
+        );
     }
 }
