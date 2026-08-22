@@ -23,6 +23,8 @@ pub mod error;
 pub mod parser;
 pub mod algorithm;
 pub mod interaction;
+pub mod anim;
+pub mod color;
 
 // 重新导出常用类型
 pub use data::{DataTable, Column, FieldValue, DataType, Schema};
@@ -36,3 +38,5 @@ pub use parser::*;
 pub use algorithm::*;
 pub use interaction::{HitRegion, BoundingBox, HitResult};
 pub use interaction::{CoordLookup, SimpleLookup};
+pub use anim::{Easing, InteractionState, ChartAnim, lerp};
+pub use color::{Rgba, with_alpha, lighten};

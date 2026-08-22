@@ -18,8 +18,16 @@ pub enum FillStyle {
 /// 描边样式
 #[derive(Clone, Debug, PartialEq)]
 pub enum StrokeStyle {
-    /// 纯色描边，CSS 颜色字符串
+    /// 纯色描边，CSS 颜色字符串（线宽由宿主/主题默认值决定）
     Color(String),
+    /// 纯色描边 + 显式线宽（逻辑像素）— 语义上必须精确控制粗细的场景
+    /// （如选中项 hairline outline 消费 `ChartAnim::outline_width`）
+    WithWidth {
+        /// CSS 颜色字符串
+        color: String,
+        /// 线宽（逻辑像素）
+        width: f64,
+    },
     /// 无描边
     None,
 }
@@ -96,6 +104,10 @@ pub struct TextStyle {
     pub font_style: FontStyle,
     /// 填充样式
     pub fill: FillStyle,
+    /// 绘制旋转(度,顺时针,绕 anchor 点;0 = 水平)
+    ///
+    /// 典型用途:Y 轴标题竖排(270° = 自下而上阅读,行业惯例)。
+    pub rotation: f64,
 }
 
 impl TextStyle {
@@ -107,6 +119,7 @@ impl TextStyle {
             font_weight: FontWeight::Normal,
             font_style: FontStyle::Normal,
             fill: FillStyle::Color("#000".to_string()),
+            rotation: 0.0,
         }
     }
 
@@ -137,6 +150,12 @@ impl TextStyle {
     /// 设置填充样式
     pub fn with_fill(mut self, fill: FillStyle) -> Self {
         self.fill = fill;
+        self
+    }
+
+    /// 设置绘制旋转(度,顺时针,绕 anchor 点)
+    pub fn with_rotation(mut self, rotation_deg: f64) -> Self {
+        self.rotation = rotation_deg;
         self
     }
 

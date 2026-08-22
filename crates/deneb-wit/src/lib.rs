@@ -10,8 +10,11 @@
 pub use deneb_core;
 pub use deneb_component;
 
+pub mod session;
+pub use session::{ChartSession, render_mark_static, wit_theme_to_record};
 
-/// WIT 类型定义 — 与 world.wit 中的 record 一一对应
+
+/// WIT 类型定义 — 与 world.wit 中的 record 一一对应(v2 resource session 协议)
 pub mod wit_types {
 
     /// WIT 字段模式定义
@@ -38,7 +41,149 @@ pub mod wit_types {
         Null,
     }
 
-    /// WIT 图表规格定义
+    /// WIT 可动画属性(Tier 2;MVP 仅 opacity)
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    pub enum WitAnimProperty {
+        Opacity,
+    }
+
+    /// WIT 循环模式
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    pub enum WitLoopMode {
+        Once,
+        Loop,
+        PingPong,
+    }
+
+    /// WIT 关键帧 (t, value, easing)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitKeyframe {
+        pub t: f32,
+        pub value: f32,
+        pub easing: String,
+    }
+
+    /// WIT Tier 2 参数动画描述(宿主本地插值)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitAnimDesc {
+        pub property: WitAnimProperty,
+        pub keyframes: Vec<WitKeyframe>,
+        pub duration_ms: u32,
+        pub delay_ms: u32,
+        pub loop_mode: WitLoopMode,
+    }
+
+    /// WIT 字体描述(无损文本样式的可传子集)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitFontDesc {
+        pub family: Option<String>,
+        pub weight: Option<u16>,
+        pub italic: bool,
+    }
+
+    /// WIT 渐变停止点
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitGradientStop {
+        pub pos: f64,
+        pub color: String,
+    }
+
+    /// WIT 线性渐变(两点式)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitLinearGradient {
+        pub x0: f64,
+        pub y0: f64,
+        pub x1: f64,
+        pub y1: f64,
+        pub stops: Vec<WitGradientStop>,
+    }
+
+    /// WIT 填充/描边 Paint(纯色或渐变)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub enum WitPaint {
+        Solid(String),
+        Gradient(WitLinearGradient),
+    }
+
+    /// WIT 绘图指令定义（展平结构，不支持递归类型;v2 无损化）
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitDrawCmd {
+        pub cmd_type: String,
+        pub params: Vec<f64>,
+        pub fill: Option<WitPaint>,
+        pub stroke: Option<WitPaint>,
+        pub stroke_width: Option<f64>,
+        pub corner_radius: Option<f64>,
+        pub text_content: Option<String>,
+        pub font: Option<WitFontDesc>,
+        pub group_depth: u32,
+        /// Tier 2 附着(宿主插值,零 wasm 调用)
+        pub anim: Option<WitAnimDesc>,
+    }
+
+    /// WIT 命中区域定义(datum 供宿主 tooltip)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitHitRegion {
+        pub index: u32,
+        pub series: Option<u32>,
+        pub bounds_x: f64,
+        pub bounds_y: f64,
+        pub bounds_w: f64,
+        pub bounds_h: f64,
+        pub datum: Vec<WitFieldValue>,
+    }
+
+    /// WIT 渲染层定义(v2:hit-regions 移出层,不再每层重复)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitLayer {
+        pub kind: String,
+        pub dirty: bool,
+        pub z_index: u32,
+        pub commands: Vec<WitDrawCmd>,
+    }
+
+    /// WIT 渲染结果定义
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitRenderResult {
+        pub layers: Vec<WitLayer>,
+    }
+
+    /// WIT 交互状态(hover 即时,selected 过渡)
+    #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitInteractionState {
+        pub hovered: Option<u32>,
+        pub selected: Vec<u32>,
+    }
+
+    /// WIT 主题记录(宿主 DesignTokens 派生注入)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitTheme {
+        pub palette: Vec<String>,
+        pub background: String,
+        pub foreground: String,
+        pub grid: String,
+        pub axis: String,
+        pub title_color: String,
+        pub focus_color: Option<String>,
+        pub font_family: String,
+        pub base_font_size: f64,
+        pub title_font_size: f64,
+        pub label_font_size: f64,
+        pub tick_font_size: f64,
+        /// (top, right, bottom, left)
+        pub margin: (f64, f64, f64, f64),
+    }
+
+    /// WIT 入场编排配置
+    #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitAnimationConfig {
+        pub enter_duration_ms: Option<u32>,
+        pub stagger_ms: Option<f64>,
+        pub easing: Option<String>,
+        pub disable: bool,
+    }
+
+    /// WIT 图表规格定义(v2:theme 移除,animation 新增)
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct WitChartSpec {
         pub mark: String,
@@ -54,46 +199,7 @@ pub mod wit_types {
         pub width: f64,
         pub height: f64,
         pub title: Option<String>,
-        pub theme: Option<String>,
-    }
-
-    /// WIT 绘图指令定义（展平结构，不支持递归类型）
-    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-    pub struct WitDrawCmd {
-        pub cmd_type: String,
-        pub params: Vec<f64>,
-        pub fill: Option<String>,
-        pub stroke: Option<String>,
-        pub stroke_width: Option<f64>,
-        pub text_content: Option<String>,
-        pub group_depth: u32,
-    }
-
-    /// WIT 命中区域定义
-    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-    pub struct WitHitRegion {
-        pub index: u32,
-        pub series: Option<u32>,
-        pub bounds_x: f64,
-        pub bounds_y: f64,
-        pub bounds_w: f64,
-        pub bounds_h: f64,
-    }
-
-    /// WIT 渲染层定义
-    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-    pub struct WitLayer {
-        pub kind: String,
-        pub dirty: bool,
-        pub z_index: u32,
-        pub commands: Vec<WitDrawCmd>,
-        pub hit_regions: Vec<WitHitRegion>,
-    }
-
-    /// WIT 渲染结果定义
-    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-    pub struct WitRenderResult {
-        pub layers: Vec<WitLayer>,
+        pub animation: Option<WitAnimationConfig>,
     }
 }
 
@@ -320,62 +426,116 @@ pub mod convert {
         builder.build().map_err(|e| ConvertError::TypeMismatch(e.to_string()))
     }
 
-    /// 内部 DrawCmd 转换为展平的 WIT DrawCmd 列表
-    pub fn draw_cmd_to_wit_draw_cmd_flat(cmd: DrawCmd, depth: u32) -> Vec<WitDrawCmd> {
+    /// FillStyle → WitPaint(渐变无损;径向渐变回退首停止色 — v2 已知限制)
+    fn fill_style_to_paint(fill: Option<deneb_core::FillStyle>) -> Option<WitPaint> {
+        match fill {
+            Some(deneb_core::FillStyle::Color(c)) => Some(WitPaint::Solid(c)),
+            Some(deneb_core::FillStyle::Gradient(g)) => match g.kind {
+                deneb_core::GradientKind::Linear { x0, y0, x1, y1 } => Some(WitPaint::Gradient(WitLinearGradient {
+                    x0, y0, x1, y1,
+                    stops: g.stops.iter().map(|s| WitGradientStop { pos: s.offset, color: s.color.clone() }).collect(),
+                })),
+                deneb_core::GradientKind::Radial { .. } => {
+                    g.stops.first().map(|s| WitPaint::Solid(s.color.clone()))
+                }
+            },
+            _ => None,
+        }
+    }
+
+    /// StrokeStyle → (WitPaint, 显式线宽)。
+    ///
+    /// `WithWidth` 携带语义线宽(如选中 outline 的 `ChartAnim::outline_width`);
+    /// 普通 `Color` 返回 None,由调用方回退主题默认线宽。
+    fn stroke_style_to_paint(stroke: Option<deneb_core::StrokeStyle>) -> (Option<WitPaint>, Option<f64>) {
+        match stroke {
+            Some(deneb_core::StrokeStyle::Color(c)) => (Some(WitPaint::Solid(c)), None),
+            Some(deneb_core::StrokeStyle::WithWidth { color, width }) => {
+                (Some(WitPaint::Solid(color)), Some(width))
+            }
+            _ => (None, None),
+        }
+    }
+
+    /// TextStyle → WitFontDesc(无损子集)
+    fn text_style_to_font(style: &deneb_core::TextStyle) -> WitFontDesc {
+        let weight = match style.font_weight {
+            deneb_core::FontWeight::Normal => None,
+            deneb_core::FontWeight::Bold => Some(700),
+            deneb_core::FontWeight::Number(n) => Some(n),
+        };
+        WitFontDesc {
+            family: Some(style.font_family.clone()),
+            weight,
+            italic: matches!(style.font_style, deneb_core::FontStyle::Italic),
+        }
+    }
+
+    /// 文本指令的填充色(纯色提取;渐变文字取首停止色)
+    fn text_fill_color(fill: &deneb_core::FillStyle) -> String {
+        match fill {
+            deneb_core::FillStyle::Color(c) => c.clone(),
+            deneb_core::FillStyle::Gradient(g) => {
+                g.stops.first().map(|s| s.color.clone()).unwrap_or_else(|| "#000".to_string())
+            }
+            deneb_core::FillStyle::None => "#000".to_string(),
+        }
+    }
+
+    /// 内部 DrawCmd 转换为展平的 WIT DrawCmd 列表(v2 无损:圆角/线宽/字体/渐变)
+    ///
+    /// `default_stroke_width`:普通 `StrokeStyle::Color` 不携带线宽,描边出现时以
+    /// 主题默认线宽传出;`StrokeStyle::WithWidth`(如选中 outline)的显式线宽优先。
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_cmd_to_wit_draw_cmd_flat(cmd: DrawCmd, depth: u32, default_stroke_width: f64) -> Vec<WitDrawCmd> {
         match cmd {
-            DrawCmd::Rect { x, y, width, height, fill, stroke, corner_radius: _ } => {
+            DrawCmd::Rect { x, y, width, height, fill, stroke, corner_radius } => {
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "rect".to_string(),
                     params: vec![x, y, width, height],
-                    fill: fill.and_then(|f| match f {
-                        deneb_core::FillStyle::Color(c) => Some(c),
-                        _ => None,
-                    }),
-                    stroke: stroke.and_then(|s| match s {
-                        deneb_core::StrokeStyle::Color(c) => Some(c),
-                        deneb_core::StrokeStyle::None => None,
-                    }),
-                    stroke_width: None,
+                    fill: fill_style_to_paint(fill),
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
+                    stroke: stroke_paint,
+                    corner_radius,
                     text_content: None,
+                    font: None,
                     group_depth: depth,
+                    anim: None,
                 }]
             }
             DrawCmd::Circle { cx, cy, r, fill, stroke } => {
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "circle".to_string(),
                     params: vec![cx, cy, r],
-                    fill: fill.and_then(|f| match f {
-                        deneb_core::FillStyle::Color(c) => Some(c),
-                        _ => None,
-                    }),
-                    stroke: stroke.and_then(|s| match s {
-                        deneb_core::StrokeStyle::Color(c) => Some(c),
-                        deneb_core::StrokeStyle::None => None,
-                    }),
-                    stroke_width: None,
+                    fill: fill_style_to_paint(fill),
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
+                    stroke: stroke_paint,
+                    corner_radius: None,
                     text_content: None,
+                    font: None,
                     group_depth: depth,
+                    anim: None,
                 }]
             }
             DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke } => {
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "arc".to_string(),
                     params: vec![cx, cy, r, start_angle, end_angle],
-                    fill: fill.and_then(|f| match f {
-                        deneb_core::FillStyle::Color(c) => Some(c),
-                        _ => None,
-                    }),
-                    stroke: stroke.and_then(|s| match s {
-                        deneb_core::StrokeStyle::Color(c) => Some(c),
-                        deneb_core::StrokeStyle::None => None,
-                    }),
-                    stroke_width: None,
+                    fill: fill_style_to_paint(fill),
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
+                    stroke: stroke_paint,
+                    corner_radius: None,
                     text_content: None,
+                    font: None,
                     group_depth: depth,
+                    anim: None,
                 }]
             }
             DrawCmd::Text { x, y, content, style, anchor, baseline } => {
-                // params: [x, y, font_size, anchor(0=Start,1=Middle,2=End), baseline(0=Top,1=Middle,2=Bottom,3=Alphabetic)]
+                // params: [x, y, font_size, anchor(0=Start,1=Middle,2=End), baseline(0=Top,1=Middle,2=Bottom,3=Alphabetic), rotation-deg(顺时针,绕 anchor 点)]
                 let anchor_code = match anchor {
                     deneb_core::TextAnchor::Start => 0.0,
                     deneb_core::TextAnchor::Middle => 1.0,
@@ -389,15 +549,15 @@ pub mod convert {
                 };
                 vec![WitDrawCmd {
                     cmd_type: "text".to_string(),
-                    params: vec![x, y, style.font_size, anchor_code, baseline_code],
-                    fill: Some(match style.fill {
-                        deneb_core::FillStyle::Color(c) => c,
-                        _ => "#000".to_string(),
-                    }),
+                    params: vec![x, y, style.font_size, anchor_code, baseline_code, style.rotation],
+                    fill: Some(WitPaint::Solid(text_fill_color(&style.fill))),
                     stroke: None,
                     stroke_width: None,
+                    corner_radius: None,
                     text_content: Some(content),
+                    font: Some(text_style_to_font(&style)),
                     group_depth: depth,
+                    anim: None,
                 }]
             }
             DrawCmd::Path { segments, fill, stroke } => {
@@ -423,25 +583,23 @@ pub mod convert {
                     }
                 }
 
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "path".to_string(),
                     params,
-                    fill: fill.and_then(|f| match f {
-                        deneb_core::FillStyle::Color(c) => Some(c),
-                        _ => None,
-                    }),
-                    stroke: stroke.and_then(|s| match s {
-                        deneb_core::StrokeStyle::Color(c) => Some(c),
-                        deneb_core::StrokeStyle::None => None,
-                    }),
-                    stroke_width: None,
+                    fill: fill_style_to_paint(fill),
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
+                    stroke: stroke_paint,
+                    corner_radius: None,
                     text_content: None,
+                    font: None,
                     group_depth: depth,
+                    anim: None,
                 }]
             }
             DrawCmd::Group { label: _, items } => {
                 items.into_iter()
-                    .flat_map(|c| draw_cmd_to_wit_draw_cmd_flat(c, depth + 1))
+                    .flat_map(|c| draw_cmd_to_wit_draw_cmd_flat(c, depth + 1, default_stroke_width))
                     .collect()
             }
         }
@@ -460,7 +618,7 @@ pub mod convert {
         }
     }
 
-    /// 内部 HitRegion 转换为 WIT HitRegion
+    /// 内部 HitRegion 转换为 WIT HitRegion(datum 数据随行传出,供宿主 tooltip)
     pub fn hit_region_to_wit_hit_region(region: HitRegion) -> WitHitRegion {
         WitHitRegion {
             index: region.index as u32,
@@ -469,42 +627,29 @@ pub mod convert {
             bounds_y: region.bounds.y,
             bounds_w: region.bounds.width,
             bounds_h: region.bounds.height,
+            datum: region.data.iter().map(|v| field_value_to_wit_field_value(v.clone())).collect(),
         }
     }
 
-    /// 内部 Layer 转换为 WIT Layer
-    pub fn layer_to_wit_layer(layer: Layer) -> WitLayer {
+    /// 内部 Layer 转换为 WIT Layer(v2:hit-regions 不再嵌入层;dirty 由调用方标注)
+    pub fn layer_to_wit_layer(layer: Layer, dirty: bool, default_stroke_width: f64) -> WitLayer {
         let commands: Vec<WitDrawCmd> = layer.commands.semantic.into_iter()
-            .flat_map(|c| draw_cmd_to_wit_draw_cmd_flat(c, 0))
+            .flat_map(|c| draw_cmd_to_wit_draw_cmd_flat(c, 0, default_stroke_width))
             .collect();
-
-        let hit_regions: Vec<WitHitRegion> = Vec::new(); // 命中区域在 ChartOutput 层级处理
 
         WitLayer {
             kind: layer_kind_to_str(layer.kind),
-            dirty: layer.dirty,
+            dirty,
             z_index: layer.z_index,
             commands,
-            hit_regions,
         }
     }
 
-    /// 内部 ChartOutput 转换为 WIT RenderResult
-    pub fn chart_output_to_wit_render_result(output: ChartOutput) -> WitRenderResult {
-        let mut layers = Vec::new();
-
-        for layer in output.layers.all() {
-            let mut wit_layer = layer_to_wit_layer(layer.clone());
-
-            // 将命中区域添加到对应的层
-            for region in &output.hit_regions {
-                let wit_region = hit_region_to_wit_hit_region(region.clone());
-                wit_layer.hit_regions.push(wit_region);
-            }
-
-            layers.push(wit_layer);
-        }
-
+    /// 内部 ChartOutput 转换为 WIT RenderResult(全部层标 dirty — 全量渲染路径)
+    pub fn chart_output_to_wit_render_result(output: ChartOutput, default_stroke_width: f64) -> WitRenderResult {
+        let layers = output.layers.all().iter().cloned()
+            .map(|layer| layer_to_wit_layer(layer, true, default_stroke_width))
+            .collect();
         WitRenderResult { layers }
     }
 }
@@ -513,6 +658,8 @@ pub mod convert {
 pub mod lib_mode {
     use super::wit_types::*;
     use super::convert::*;
+    use crate::session::render_mark_static;
+    use deneb_component::theme::Theme;
 
     /// 解析数据
     pub fn parse_data(data: &[u8], format: &str) -> Result<WitDataTable, String> {
@@ -567,76 +714,15 @@ pub mod lib_mode {
         Ok(data_table_to_wit_data_table(&table))
     }
 
-    /// 使用预解析的 WitDataTable 渲染图表
+    /// 使用预解析的 WitDataTable 渲染图表(单发路径;主题为 DefaultTheme — 有状态会话见 session 模块)
     pub fn render_from_wit_table(wit_table: WitDataTable, spec: WitChartSpec) -> Result<WitRenderResult, String> {
         let table = wit_data_table_to_data_table(wit_table).map_err(|e| e.to_string())?;
         let chart_spec = wit_chart_spec_with_table(&spec, &table).map_err(|e| e.to_string())?;
 
         let theme = deneb_component::DefaultTheme;
-        let output = match chart_spec.mark {
-            deneb_component::Mark::Line => {
-                deneb_component::LineChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Bar => {
-                deneb_component::BarChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Scatter => {
-                deneb_component::ScatterChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Area => {
-                deneb_component::AreaChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Pie => {
-                deneb_component::PieChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Histogram => {
-                deneb_component::HistogramChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::BoxPlot => {
-                deneb_component::BoxPlotChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Waterfall => {
-                deneb_component::WaterfallChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Candlestick => {
-                deneb_component::CandlestickChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Radar => {
-                deneb_component::RadarChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Heatmap => {
-                deneb_component::HeatmapChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Strip => {
-                deneb_component::StripChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Sankey => {
-                deneb_component::SankeyChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Chord => {
-                deneb_component::ChordChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-            deneb_component::Mark::Contour => {
-                deneb_component::ContourChart::render(&chart_spec, &theme, &table)
-                    .map_err(|e| e.to_string())?
-            }
-        };
+        let output = render_mark_static(&chart_spec, &theme, &table)?;
 
-        Ok(chart_output_to_wit_render_result(output))
+        Ok(chart_output_to_wit_render_result(output, theme.default_stroke_width()))
     }
 
     /// 渲染图表
@@ -645,22 +731,20 @@ pub mod lib_mode {
         render_from_wit_table(wit_table, spec)
     }
 
-    /// 命中测试
-    pub fn hit_test(result: &WitRenderResult, x: f64, y: f64, tolerance: f64) -> Option<u32> {
-        for layer in &result.layers {
-            for region in &layer.hit_regions {
-                let bounds = deneb_core::BoundingBox::new(
-                    region.bounds_x,
-                    region.bounds_y,
-                    region.bounds_w,
-                    region.bounds_h,
-                );
+    /// 命中测试(v2:对命中区列表做 AABB — 宿主侧调用的参考实现)
+    pub fn hit_test(regions: &[WitHitRegion], x: f64, y: f64, tolerance: f64) -> Option<u32> {
+        for region in regions {
+            let bounds = deneb_core::BoundingBox::new(
+                region.bounds_x,
+                region.bounds_y,
+                region.bounds_w,
+                region.bounds_h,
+            );
 
-                // 检查点是否在包围盒内（考虑 tolerance）
-                let expanded = bounds.expand(tolerance);
-                if expanded.contains(x, y) {
-                    return Some(region.index);
-                }
+            // 检查点是否在包围盒内（考虑 tolerance）
+            let expanded = bounds.expand(tolerance);
+            if expanded.contains(x, y) {
+                return Some(region.index);
             }
         }
         None

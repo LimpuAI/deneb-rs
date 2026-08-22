@@ -121,7 +121,7 @@ fn test_wasm_render_arrow() {
         width: 800.0,
         height: 600.0,
         title: Some("Arrow Test".to_string()),
-        theme: None,
+        animation: None,
     };
 
     let result = host.render(&arrow_data, "arrow", &spec).expect("render arrow failed");
@@ -148,7 +148,7 @@ fn test_wasm_render_parquet() {
         width: 800.0,
         height: 600.0,
         title: Some("Parquet Test".to_string()),
-        theme: None,
+        animation: None,
     };
 
     let result = host.render(&parquet_data, "parquet", &spec).expect("render parquet failed");

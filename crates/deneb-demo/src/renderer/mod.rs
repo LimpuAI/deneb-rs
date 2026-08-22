@@ -6,7 +6,7 @@ pub mod color;
 pub mod text;
 
 use deneb_core::{DrawCmd, FillStyle, PathSegment, RenderLayers, StrokeStyle, TextStyle};
-use deneb_wit::wit_types::{WitDrawCmd, WitLayer};
+use deneb_wit::wit_types::{WitDrawCmd, WitLayer, WitPaint};
 use text::FontState;
 
 /// Canvas 渲染器，将 DrawCmd 渲染到 Pixmap
@@ -54,7 +54,7 @@ impl TinySkiaRenderer {
         }
     }
 
-    /// 渲染单个 WitDrawCmd
+    /// 渲染单个 WitDrawCmd(v2:WitPaint/圆角/字体)
     pub fn render_wit_draw_cmd(&mut self, cmd: &WitDrawCmd) {
         match cmd.cmd_type.as_str() {
             "rect" => {
@@ -64,9 +64,9 @@ impl TinySkiaRenderer {
                     let y = params[1];
                     let w = params[2];
                     let h = params[3];
-                    let fill = cmd.fill.as_ref().map(|s| FillStyle::Color(s.clone()));
-                    let stroke = cmd.stroke.as_ref().map(|s| StrokeStyle::Color(s.clone()));
-                    self.draw_rect(x, y, w, h, &fill, &stroke, &None);
+                    let fill = wit_paint_to_fill(&cmd.fill);
+                    let stroke = wit_paint_to_stroke(&cmd.stroke);
+                    self.draw_rect(x, y, w, h, &fill, &stroke, &cmd.corner_radius);
                 }
             }
             "circle" => {
@@ -75,15 +75,15 @@ impl TinySkiaRenderer {
                     let cx = params[0];
                     let cy = params[1];
                     let r = params[2];
-                    let fill = cmd.fill.as_ref().map(|s| FillStyle::Color(s.clone()));
-                    let stroke = cmd.stroke.as_ref().map(|s| StrokeStyle::Color(s.clone()));
+                    let fill = wit_paint_to_fill(&cmd.fill);
+                    let stroke = wit_paint_to_stroke(&cmd.stroke);
                     self.draw_circle(cx, cy, r, &fill, &stroke);
                 }
             }
             "path" => {
                 let segments = decode_path_segments(&cmd.params);
-                let fill = cmd.fill.as_ref().map(|s| FillStyle::Color(s.clone()));
-                let stroke = cmd.stroke.as_ref().map(|s| StrokeStyle::Color(s.clone()));
+                let fill = wit_paint_to_fill(&cmd.fill);
+                let stroke = wit_paint_to_stroke(&cmd.stroke);
                 self.draw_path(&segments, &fill, &stroke);
             }
             "text" => {
@@ -104,10 +104,28 @@ impl TinySkiaRenderer {
                         _ => deneb_core::TextBaseline::Alphabetic,
                     };
                     if let Some(content) = &cmd.text_content {
-                        let fill_color = cmd.fill.as_deref().unwrap_or("#000000");
-                        let style = TextStyle::new()
+                        let fill_color = match &cmd.fill {
+                            Some(WitPaint::Solid(c)) => c.clone(),
+                            Some(WitPaint::Gradient(g)) => {
+                                g.stops.first().map(|s| s.color.clone()).unwrap_or_else(|| "#000000".to_string())
+                            }
+                            None => "#000000".to_string(),
+                        };
+                        let mut style = TextStyle::new()
                             .with_font_size(font_size)
-                            .with_fill(FillStyle::Color(fill_color.to_string()));
+                            .with_fill(FillStyle::Color(fill_color));
+                        if let Some(font) = &cmd.font {
+                            if let Some(family) = &font.family {
+                                style = style.with_font_family(family.clone());
+                            }
+                            if let Some(weight) = font.weight {
+                                style = style.with_font_weight(if weight >= 700 {
+                                    deneb_core::FontWeight::Bold
+                                } else {
+                                    deneb_core::FontWeight::Normal
+                                });
+                            }
+                        }
                         self.draw_text(x, y, content, &style, anchor, baseline);
                     }
                 }
@@ -453,6 +471,14 @@ impl TinySkiaRenderer {
                 paint.set_color(color);
                 Some(paint)
             }
+            // 原生预览路径暂用 tiny-skia 默认线宽渲染;宿主侧以 WitDrawCmd
+            // 的 stroke_width 为准(线宽经 convert 链无损传出)
+            StrokeStyle::WithWidth { color, .. } => {
+                let c = color::parse_color(color)?;
+                let mut paint = tiny_skia::Paint::default();
+                paint.set_color(c);
+                Some(paint)
+            }
             StrokeStyle::None => None,
         }
     }
@@ -630,4 +656,27 @@ fn decode_path_segments(params: &[f64]) -> Vec<PathSegment> {
         }
     }
     segments
+}
+
+
+// ——— v2 WitPaint → 内部样式 ———
+
+fn wit_paint_to_fill(paint: &Option<WitPaint>) -> Option<FillStyle> {
+    match paint {
+        Some(WitPaint::Solid(c)) => Some(FillStyle::Color(c.clone())),
+        Some(WitPaint::Gradient(g)) => Some(FillStyle::Gradient(deneb_core::Gradient {
+            kind: deneb_core::GradientKind::Linear {
+                x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1,
+            },
+            stops: g.stops.iter().map(|s| deneb_core::GradientStop::new(s.pos, s.color.clone())).collect(),
+        })),
+        None => None,
+    }
+}
+
+fn wit_paint_to_stroke(paint: &Option<WitPaint>) -> Option<StrokeStyle> {
+    match paint {
+        Some(WitPaint::Solid(c)) => Some(StrokeStyle::Color(c.clone())),
+        _ => None,
+    }
 }

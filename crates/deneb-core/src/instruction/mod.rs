@@ -341,6 +341,12 @@ impl DrawCmd {
                     ops.push(CanvasOp::SetStrokeStyle(color.clone()));
                     ops.push(CanvasOp::Stroke);
                 }
+                // 显式线宽:描边前设置 lineWidth(CanvasOp 序列化路径消费 WithWidth)
+                StrokeStyle::WithWidth { color, width } => {
+                    ops.push(CanvasOp::SetStrokeStyle(color.clone()));
+                    ops.push(CanvasOp::SetLineWidth(*width));
+                    ops.push(CanvasOp::Stroke);
+                }
                 StrokeStyle::None => {}
             }
         }
@@ -514,6 +520,50 @@ impl Default for RenderOutput {
 impl From<Vec<DrawCmd>> for RenderOutput {
     fn from(commands: Vec<DrawCmd>) -> Self {
         Self::from_commands(commands)
+    }
+}
+
+impl DrawCmd {
+    /// 对指令的所有颜色应用 alpha 乘法(递归遍历 Group)
+    ///
+    /// 入场淡入(grid/axis/title 层)的表达方式 — 与 Canvas globalAlpha 语义一致。
+    pub fn apply_alpha(&mut self, alpha: f64) {
+        match self {
+            DrawCmd::Rect { fill, stroke, .. }
+            | DrawCmd::Path { fill, stroke, .. }
+            | DrawCmd::Circle { fill, stroke, .. }
+            | DrawCmd::Arc { fill, stroke, .. } => {
+                if let Some(FillStyle::Color(c)) = fill {
+                    *c = crate::color::with_alpha(c, alpha);
+                }
+                match stroke {
+                    // 两种纯色描边变体都参与淡入(WithWidth 只缩放颜色,线宽不变)
+                    Some(StrokeStyle::Color(c)) | Some(StrokeStyle::WithWidth { color: c, .. }) => {
+                        *c = crate::color::with_alpha(c, alpha);
+                    }
+                    _ => {}
+                }
+            }
+            DrawCmd::Text { style, .. } => {
+                if let FillStyle::Color(c) = &mut style.fill {
+                    *c = crate::color::with_alpha(c, alpha);
+                }
+            }
+            DrawCmd::Group { items, .. } => {
+                for item in items {
+                    item.apply_alpha(alpha);
+                }
+            }
+        }
+    }
+}
+
+impl RenderOutput {
+    /// 对全部语义指令应用 alpha(见 [`DrawCmd::apply_alpha`])
+    pub fn apply_alpha_to_all(&mut self, alpha: f64) {
+        for cmd in &mut self.semantic {
+            cmd.apply_alpha(alpha);
+        }
     }
 }
 

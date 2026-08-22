@@ -139,12 +139,14 @@ impl StripChart {
             }
         })?;
 
+        // 获取唯一类别(保持数据首现顺序 — 确定性:HashSet 随机序会导致
+        // 每次重渲染条带位置洗牌,同 bar.rs 修过的 bug)
+        let mut seen = std::collections::HashSet::new();
         let categories: Vec<String> = x_column
             .values
             .iter()
             .filter_map(|v| v.as_text().map(|s| s.to_string()))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
+            .filter(|s| seen.insert(s.clone()))
             .collect();
 
         let x_scale = BandScale::new(
@@ -192,11 +194,12 @@ impl StripChart {
         Ok((x_scale, y_scale))
     }
 
-    /// 按类别分组数据
+    /// 按类别分组数据(保持类别首现顺序 — 确定性:HashMap 迭代序随机
+    /// 会导致跨渲染散点绘制顺序/分色洗牌)
     fn group_by_category(
         spec: &ChartSpec,
         data: &DataTable,
-    ) -> Result<HashMap<String, Vec<(f64, usize, Vec<FieldValue>)>>, ComponentError> {
+    ) -> Result<Vec<(String, Vec<(f64, usize, Vec<FieldValue>)>)>, ComponentError> {
         let x_field = spec.encoding.x.as_ref().ok_or_else(|| {
             ComponentError::InvalidConfig {
                 reason: "x encoding is required".to_string(),
@@ -222,6 +225,7 @@ impl StripChart {
         })?;
 
         let mut groups: HashMap<String, Vec<(f64, usize, Vec<FieldValue>)>> = HashMap::new();
+        let mut group_order: Vec<String> = Vec::new();
         let row_count = data.row_count();
 
         for row_idx in 0..row_count {
@@ -244,28 +248,34 @@ impl StripChart {
                 }
             }
 
+            if !groups.contains_key(&x_value) {
+                group_order.push(x_value.clone());
+            }
             groups
                 .entry(x_value)
                 .or_insert_with(Vec::new)
                 .push((y_value, row_idx, row_data));
         }
 
-        Ok(groups)
+        // 按首现序输出
+        Ok(group_order
+            .into_iter()
+            .map(|key| (key.clone(), groups.remove(&key).unwrap_or_default()))
+            .collect())
     }
 
-    /// 渲染散点（带 beeswarm 布局）
+    /// 渲染散点（带 beeswarm 布局;分组按首现序迭代 — 确定性）
     fn render_points<T: Theme>(
         theme: &T,
         x_scale: &BandScale,
         y_scale: &LinearScale,
-        groups: &HashMap<String, Vec<(f64, usize, Vec<FieldValue>)>>,
+        groups: &[(String, Vec<(f64, usize, Vec<FieldValue>)>)],
         point_radius: f64,
     ) -> Result<(RenderOutput, Vec<HitRegion>), ComponentError> {
         let mut output = RenderOutput::new();
         let mut hit_regions = Vec::new();
 
-        let mut group_idx = 0;
-        for (category, points) in groups {
+        for (group_idx, (category, points)) in groups.iter().enumerate() {
             let band_center = x_scale.band_center(category).ok_or_else(|| {
                 ComponentError::InvalidConfig {
                     reason: format!("category not found in x scale: {}", category),
@@ -314,8 +324,6 @@ impl StripChart {
                 );
                 hit_regions.push(region);
             }
-
-            group_idx += 1;
         }
 
         Ok((output, hit_regions))
@@ -517,5 +525,35 @@ mod tests {
 
         let output = result.unwrap();
         assert_eq!(output.hit_regions.len(), 5);
+    }
+
+    #[test]
+    fn test_render_deterministic_across_calls() {
+        // 回归:HashSet/HashMap 随机序导致条带位置与散点绘制序跨渲染洗牌
+        // (hover/选中重渲染时散点会"乱跳")
+        let spec = create_test_spec();
+        let theme = DefaultTheme;
+        let data = create_test_data();
+
+        let first = StripChart::render(&spec, &theme, &data).unwrap();
+        let points_of = |out: &ChartOutput| -> Vec<(f64, f64)> {
+            out.layers
+                .get_layer(LayerKind::Data)
+                .unwrap()
+                .commands
+                .semantic
+                .iter()
+                .map(|c| match c {
+                    DrawCmd::Circle { cx, cy, .. } => (*cx, *cy),
+                    _ => (0.0, 0.0),
+                })
+                .collect()
+        };
+        let p1 = points_of(&first);
+        assert_eq!(p1.len(), 6);
+        for _ in 0..8 {
+            let again = StripChart::render(&spec, &theme, &data).unwrap();
+            assert_eq!(p1, points_of(&again), "散点位置序列必须跨渲染确定");
+        }
     }
 }
