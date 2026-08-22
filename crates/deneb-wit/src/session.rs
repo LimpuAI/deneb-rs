@@ -573,6 +573,54 @@ mod tests {
     }
 
     #[test]
+    fn test_resize_relayouts_geometry_within_new_width() {
+        // 宿主实际布局尺寸 < spec 尺寸(容器约束):resize 后标题锚点/柱子
+        // 必须按新宽度重排,不得溢出新边界(echodawn 侧标题偏右 bug 的会话层判据)
+        let mut s = ChartSession::new(bar_spec(640.0, 360.0), None).unwrap();
+        s.update_data(b"category,value\nA,10\nB,20\nC,15\nD,8", "csv").unwrap();
+        s.render(1.0).unwrap();
+
+        let title_anchor = |r: &WitRenderResult| -> f64 {
+            r.layers
+                .iter()
+                .flat_map(|l| l.commands.iter())
+                .find_map(|c| (c.cmd_type == "text" && c.text_content.as_deref() == Some("Test"))
+                    .then_some(c.params[0]))
+                .unwrap()
+        };
+        let max_data_right = |r: &WitRenderResult| -> f64 {
+            r.layers
+                .iter()
+                .filter(|l| l.kind == "data")
+                .flat_map(|l| l.commands.iter())
+                .filter(|c| c.cmd_type == "rect")
+                .map(|c| c.params[0] + c.params[2])
+                .fold(0.0, f64::max)
+        };
+
+        let before = s.render(1.0).unwrap();
+        let before_title = title_anchor(&before);
+        let before_right = max_data_right(&before);
+
+        s.resize(560.0, 360.0);
+        let after = s.render(1.0).unwrap();
+        let after_title = title_anchor(&after);
+        let after_right = max_data_right(&after);
+
+        // 标题锚点随新宽度的 plot 中心移动(左移)
+        assert!(
+            after_title < before_title - 30.0,
+            "title anchor should recenter to narrower plot: {before_title} → {after_title}"
+        );
+        // 柱子几何收敛到新宽度内(560 - margin.right 24 ≈ 536,留容差)
+        assert!(
+            after_right <= 560.0 - 20.0,
+            "bars must fit new width: right={after_right}"
+        );
+        assert!(before_right > 560.0 - 20.0, "640 布局理应溢出 560 宽(前置自检)");
+    }
+
+    #[test]
     fn test_selection_transition_dims_data_layer() {
         let mut s = session_with_data();
         s.render(1.0).unwrap();
