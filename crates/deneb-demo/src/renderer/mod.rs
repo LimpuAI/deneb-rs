@@ -471,6 +471,14 @@ impl TinySkiaRenderer {
                 paint.set_color(color);
                 Some(paint)
             }
+            // 原生预览路径暂用 tiny-skia 默认线宽渲染;宿主侧以 WitDrawCmd
+            // 的 stroke_width 为准(线宽经 convert 链无损传出)
+            StrokeStyle::WithWidth { color, .. } => {
+                let c = color::parse_color(color)?;
+                let mut paint = tiny_skia::Paint::default();
+                paint.set_color(c);
+                Some(paint)
+            }
             StrokeStyle::None => None,
         }
     }

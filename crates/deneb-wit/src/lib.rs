@@ -443,11 +443,17 @@ pub mod convert {
         }
     }
 
-    /// StrokeStyle → WitPaint
-    fn stroke_style_to_paint(stroke: Option<deneb_core::StrokeStyle>) -> Option<WitPaint> {
+    /// StrokeStyle → (WitPaint, 显式线宽)。
+    ///
+    /// `WithWidth` 携带语义线宽(如选中 outline 的 `ChartAnim::outline_width`);
+    /// 普通 `Color` 返回 None,由调用方回退主题默认线宽。
+    fn stroke_style_to_paint(stroke: Option<deneb_core::StrokeStyle>) -> (Option<WitPaint>, Option<f64>) {
         match stroke {
-            Some(deneb_core::StrokeStyle::Color(c)) => Some(WitPaint::Solid(c)),
-            _ => None,
+            Some(deneb_core::StrokeStyle::Color(c)) => (Some(WitPaint::Solid(c)), None),
+            Some(deneb_core::StrokeStyle::WithWidth { color, width }) => {
+                (Some(WitPaint::Solid(color)), Some(width))
+            }
+            _ => (None, None),
         }
     }
 
@@ -478,17 +484,18 @@ pub mod convert {
 
     /// 内部 DrawCmd 转换为展平的 WIT DrawCmd 列表(v2 无损:圆角/线宽/字体/渐变)
     ///
-    /// `default_stroke_width`:内部 StrokeStyle 不携带线宽,描边出现时以主题默认线宽传出。
+    /// `default_stroke_width`:普通 `StrokeStyle::Color` 不携带线宽,描边出现时以
+    /// 主题默认线宽传出;`StrokeStyle::WithWidth`(如选中 outline)的显式线宽优先。
     #[allow(clippy::too_many_arguments)]
     pub fn draw_cmd_to_wit_draw_cmd_flat(cmd: DrawCmd, depth: u32, default_stroke_width: f64) -> Vec<WitDrawCmd> {
         match cmd {
             DrawCmd::Rect { x, y, width, height, fill, stroke, corner_radius } => {
-                let stroke_paint = stroke_style_to_paint(stroke);
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "rect".to_string(),
                     params: vec![x, y, width, height],
                     fill: fill_style_to_paint(fill),
-                    stroke_width: if stroke_paint.is_some() { Some(default_stroke_width) } else { None },
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius,
                     text_content: None,
@@ -498,12 +505,12 @@ pub mod convert {
                 }]
             }
             DrawCmd::Circle { cx, cy, r, fill, stroke } => {
-                let stroke_paint = stroke_style_to_paint(stroke);
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "circle".to_string(),
                     params: vec![cx, cy, r],
                     fill: fill_style_to_paint(fill),
-                    stroke_width: if stroke_paint.is_some() { Some(default_stroke_width) } else { None },
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius: None,
                     text_content: None,
@@ -513,12 +520,12 @@ pub mod convert {
                 }]
             }
             DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke } => {
-                let stroke_paint = stroke_style_to_paint(stroke);
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "arc".to_string(),
                     params: vec![cx, cy, r, start_angle, end_angle],
                     fill: fill_style_to_paint(fill),
-                    stroke_width: if stroke_paint.is_some() { Some(default_stroke_width) } else { None },
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius: None,
                     text_content: None,
@@ -576,12 +583,12 @@ pub mod convert {
                     }
                 }
 
-                let stroke_paint = stroke_style_to_paint(stroke);
+                let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "path".to_string(),
                     params,
                     fill: fill_style_to_paint(fill),
-                    stroke_width: if stroke_paint.is_some() { Some(default_stroke_width) } else { None },
+                    stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius: None,
                     text_content: None,

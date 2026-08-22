@@ -121,6 +121,10 @@ impl ChartAnim {
     /// stagger 级联总量上限(毫秒)— 保证尾部等待有界
     pub const STAGGER_CAP_MS: f64 = 400.0;
 
+    /// 标题上移入场幅度(逻辑像素)— design §9.4 fade-slide:
+    /// 标题自最终位置下方 8px 随淡入上移到位(位移量随 title_slide 进度归零)
+    pub const TITLE_SLIDE_PX: f64 = 8.0;
+
     /// 数据项 i 的生长相位:全局 t 映射到该项的局部进度 [0,1]。
     ///
     /// 项 i 的窗口起点 = 数据生长区起点(0.1)+ 级联偏移占比 × 剩余跨度,
@@ -142,12 +146,36 @@ impl ChartAnim {
         }
     }
 
-    /// 静态层(grid/axis/title)入场淡入进度:窗口 t ∈ [0, 0.3]
+    /// 静态层(grid/axis)入场淡入进度:窗口 t ∈ [0, 0.3]
+    ///
+    /// 注:title 层不复用本窗口 — 标题带位移,用独立的
+    /// [`ChartAnim::title_fade`]/[`ChartAnim::title_slide`](§9.4 fade-slide)。
     pub fn static_fade(&self, t: f64) -> f64 {
         if self.disable {
             return 1.0;
         }
         self.easing.apply((t.clamp(0.0, 1.0) / 0.3).min(1.0))
+    }
+
+    /// 标题层入场淡入进度:独立相位窗 t ∈ [0, 0.35](design §9.4)。
+    ///
+    /// 略长于 grid/axis 的 [0, 0.3] — 标题同时做 fade-slide,收尾稍晚
+    /// 与位移动画同步完成;缓动与 static_fade 一致(默认 cubic-out)。
+    pub fn title_fade(&self, t: f64) -> f64 {
+        if self.disable {
+            return 1.0;
+        }
+        self.easing.apply((t.clamp(0.0, 1.0) / 0.35).min(1.0))
+    }
+
+    /// 标题层入场滑移进度 [0,1](1 = 已就位)。调用方以
+    /// `(1 - progress) * TITLE_SLIDE_PX` 计算向下的像素偏移,
+    /// 即标题自最终位置下方 8px 上移到位(fade-slide 惯例)。
+    pub fn title_slide(&self, t: f64) -> f64 {
+        if self.disable {
+            return 1.0;
+        }
+        self.easing.apply((t.clamp(0.0, 1.0) / 0.35).min(1.0))
     }
 
     /// 状态过渡当前置灰强度:lerp(dim_from, target, ease(state_t))。
@@ -215,6 +243,27 @@ mod tests {
         };
         assert_eq!(anim.item_progress(9, 0.0), 1.0);
         assert_eq!(anim.static_fade(0.0), 1.0);
+    }
+
+    #[test]
+    fn test_title_phase_window() {
+        let anim = ChartAnim::steady();
+        // 窗口边界:t=0 全隐/全偏移,t≥0.35 淡入完成/滑移就位
+        assert_eq!(anim.title_fade(0.0), 0.0);
+        assert_eq!(anim.title_slide(0.0), 0.0);
+        assert_eq!(anim.title_fade(0.35), 1.0);
+        assert_eq!(anim.title_slide(0.35), 1.0);
+        assert_eq!(anim.title_fade(1.0), 1.0);
+        // 窗内单调:早期进度更低
+        assert!(anim.title_fade(0.1) < anim.title_fade(0.35));
+        assert!(anim.title_slide(0.1) < anim.title_slide(0.35));
+        // 与 grid/axis 窗口解耦:0.3 处 title 仍未完成(static_fade 已完成)
+        assert_eq!(anim.static_fade(0.3), 1.0);
+        assert!(anim.title_fade(0.3) < 1.0);
+        // disable → 一切按最终态渲染
+        let d = ChartAnim { disable: true, ..ChartAnim::steady() };
+        assert_eq!(d.title_fade(0.0), 1.0);
+        assert_eq!(d.title_slide(0.0), 1.0);
     }
 
     #[test]

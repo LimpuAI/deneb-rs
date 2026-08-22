@@ -341,6 +341,12 @@ impl DrawCmd {
                     ops.push(CanvasOp::SetStrokeStyle(color.clone()));
                     ops.push(CanvasOp::Stroke);
                 }
+                // 显式线宽:描边前设置 lineWidth(CanvasOp 序列化路径消费 WithWidth)
+                StrokeStyle::WithWidth { color, width } => {
+                    ops.push(CanvasOp::SetStrokeStyle(color.clone()));
+                    ops.push(CanvasOp::SetLineWidth(*width));
+                    ops.push(CanvasOp::Stroke);
+                }
                 StrokeStyle::None => {}
             }
         }
@@ -530,8 +536,12 @@ impl DrawCmd {
                 if let Some(FillStyle::Color(c)) = fill {
                     *c = crate::color::with_alpha(c, alpha);
                 }
-                if let Some(StrokeStyle::Color(c)) = stroke {
-                    *c = crate::color::with_alpha(c, alpha);
+                match stroke {
+                    // 两种纯色描边变体都参与淡入(WithWidth 只缩放颜色,线宽不变)
+                    Some(StrokeStyle::Color(c)) | Some(StrokeStyle::WithWidth { color: c, .. }) => {
+                        *c = crate::color::with_alpha(c, alpha);
+                    }
+                    _ => {}
                 }
             }
             DrawCmd::Text { style, .. } => {

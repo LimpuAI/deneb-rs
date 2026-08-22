@@ -153,12 +153,14 @@ impl BoxPlotChart {
             }
         })?;
 
+        // 获取唯一类别(保持数据首现顺序 — 确定性:HashSet 随机序会导致
+        // 每次重渲染箱体位置洗牌,同 bar.rs 修过的 bug)
+        let mut seen = std::collections::HashSet::new();
         let categories: Vec<String> = x_column
             .values
             .iter()
             .filter_map(|v| v.as_text().map(|s| s.to_string()))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
+            .filter(|s| seen.insert(s.clone()))
             .collect();
 
         let x_scale = BandScale::new(
@@ -206,11 +208,12 @@ impl BoxPlotChart {
         Ok((x_scale, y_scale))
     }
 
-    /// 按类别分组并计算五数概括
+    /// 按类别分组并计算五数概括(保持类别首现顺序 — 确定性:HashMap 迭代序
+    /// 随机会导致跨渲染箱体绘制顺序/分色洗牌)
     fn group_and_compute_stats(
         spec: &ChartSpec,
         data: &DataTable,
-    ) -> Result<HashMap<String, BoxStats>, ComponentError> {
+    ) -> Result<Vec<(String, BoxStats)>, ComponentError> {
         let x_field = spec.encoding.x.as_ref().ok_or_else(|| {
             ComponentError::InvalidConfig {
                 reason: "x encoding is required".to_string(),
@@ -237,6 +240,7 @@ impl BoxPlotChart {
 
         // 按类别分组收集数值
         let mut groups: HashMap<String, Vec<f64>> = HashMap::new();
+        let mut group_order: Vec<String> = Vec::new();
         let row_count = data.row_count();
 
         for row_idx in 0..row_count {
@@ -251,18 +255,22 @@ impl BoxPlotChart {
                 .and_then(|v| v.as_numeric())
                 .unwrap_or(0.0);
 
+            if !groups.contains_key(&x_value) {
+                group_order.push(x_value.clone());
+            }
             groups
                 .entry(x_value)
                 .or_insert_with(Vec::new)
                 .push(y_value);
         }
 
-        // 为每组计算统计量
-        let mut result = HashMap::new();
-        for (category, mut values) in groups {
+        // 为每组计算统计量,按首现序输出
+        let mut result = Vec::with_capacity(group_order.len());
+        for category in group_order {
+            let mut values = groups.remove(&category).unwrap_or_default();
             values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
             let stats = Self::compute_box_stats(&values);
-            result.insert(category, stats);
+            result.push((category, stats));
         }
 
         Ok(result)
@@ -336,12 +344,12 @@ impl BoxPlotChart {
         sorted[lower] + frac * (sorted[upper] - sorted[lower])
     }
 
-    /// 渲染箱体、须和异常值
+    /// 渲染箱体、须和异常值(分组按首现序迭代 — 确定性)
     fn render_boxes<T: Theme>(
         theme: &T,
         x_scale: &BandScale,
         y_scale: &LinearScale,
-        groups: &HashMap<String, BoxStats>,
+        groups: &[(String, BoxStats)],
         _plot_area: &PlotArea,
     ) -> Result<(RenderOutput, Vec<HitRegion>), ComponentError> {
         let mut output = RenderOutput::new();
@@ -352,8 +360,7 @@ impl BoxPlotChart {
         let outlier_color = theme.series_color(1).to_string();
         let whisker_stroke = StrokeStyle::Color(theme.foreground_color().to_string());
 
-        let mut group_idx = 0;
-        for (category, stats) in groups {
+        for (group_idx, (category, stats)) in groups.iter().enumerate() {
             let band_center = x_scale.band_center(category).ok_or_else(|| {
                 ComponentError::InvalidConfig {
                     reason: format!("category not found in x scale: {}", category),
@@ -488,8 +495,6 @@ impl BoxPlotChart {
                 );
                 hit_regions.push(outlier_region);
             }
-
-            group_idx += 1;
         }
 
         Ok((output, hit_regions))
@@ -712,5 +717,35 @@ mod tests {
         assert!(result.layers.get_layer(LayerKind::Grid).is_some());
         assert!(result.layers.get_layer(LayerKind::Axis).is_some());
         assert!(result.layers.get_layer(LayerKind::Data).is_some());
+    }
+
+    #[test]
+    fn test_render_deterministic_across_calls() {
+        // 回归:HashSet/HashMap 随机序导致箱体位置与绘制序跨渲染洗牌
+        // (hover/选中重渲染时箱线图会"乱跳")
+        let spec = create_test_spec();
+        let theme = DefaultTheme;
+        let data = create_test_data();
+
+        let first = BoxPlotChart::render(&spec, &theme, &data).unwrap();
+        let boxes_of = |out: &ChartOutput| -> Vec<(f64, f64)> {
+            out.layers
+                .get_layer(LayerKind::Data)
+                .unwrap()
+                .commands
+                .semantic
+                .iter()
+                .filter_map(|c| match c {
+                    DrawCmd::Rect { x, y, .. } => Some((*x, *y)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let b1 = boxes_of(&first);
+        assert_eq!(b1.len(), 2);
+        for _ in 0..8 {
+            let again = BoxPlotChart::render(&spec, &theme, &data).unwrap();
+            assert_eq!(b1, boxes_of(&again), "箱体位置序列必须跨渲染确定");
+        }
     }
 }

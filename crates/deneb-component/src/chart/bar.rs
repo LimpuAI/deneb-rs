@@ -417,8 +417,13 @@ impl BarChart {
                     fill_color = lighten(&fill_color, anim.hover_boost);
                 }
                 let selected = anim.state.is_selected(*row_idx);
+                // hairline outline:形状+颜色承载语义,线宽真实消费 outline_width
+                // (design §9.4;convert 链把 WithWidth 的线宽传给宿主)
                 let stroke = if selected {
-                    Some(StrokeStyle::Color(anim.outline_color.clone()))
+                    Some(StrokeStyle::WithWidth {
+                        color: anim.outline_color.clone(),
+                        width: anim.outline_width,
+                    })
                 } else {
                     None
                 };

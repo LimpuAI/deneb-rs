@@ -22,7 +22,7 @@ use deneb_component::{
     HistogramChart, LineChart, Mark, PieChart, RadarChart, SankeyChart, ScatterChart, StripChart,
     WaterfallChart,
 };
-use deneb_core::{ChartAnim, Easing, InteractionState, LayerKind, RenderLayers};
+use deneb_core::{ChartAnim, DrawCmd, Easing, InteractionState, LayerKind, RenderLayers};
 use deneb_component::{ChartOutput, Encoding, Field};
 
 /// 静态(稳态)渲染分发 — 15 种 mark
@@ -292,11 +292,25 @@ impl ChartSession {
 
         // 静态层淡入(仅未完成时)
         if t < 1.0 {
+            // grid/axis:纯淡入,窗 [0, 0.3]
             let fade = anim.static_fade(t);
-            for kind in [LayerKind::Grid, LayerKind::Axis, LayerKind::Title] {
+            for kind in [LayerKind::Grid, LayerKind::Axis] {
                 if let Some(layer) = output.layers.get_layer_mut(kind) {
                     layer.commands.apply_alpha_to_all(fade);
                 }
+            }
+            // title:独立相位窗 [0, 0.35] fade-slide — 淡入 + 自最终位置下方
+            // TITLE_SLIDE_PX 上移到位(design §9.4)。在会话层后处理 internal
+            // DrawCmd::Text 的 y,而非改 shared::render_title 签名 — 全部
+            // 图表类型的 title 生成零改动即获得该行为
+            let slide = (1.0 - anim.title_slide(t)) * ChartAnim::TITLE_SLIDE_PX;
+            if let Some(layer) = output.layers.get_layer_mut(LayerKind::Title) {
+                for cmd in &mut layer.commands.semantic {
+                    if let DrawCmd::Text { y, .. } = cmd {
+                        *y += slide;
+                    }
+                }
+                layer.commands.apply_alpha_to_all(anim.title_fade(t));
             }
         }
 
@@ -775,14 +789,57 @@ mod tests {
     }
 
     #[test]
+    fn test_title_fade_slide_phase_window() {
+        // title 独立相位窗 [0,0.35]:早期 alpha 更低;y 自下方 8px 上移,
+        // t≥0.35 归零与稳态一致(grid/axis 仍走 [0,0.3] 纯淡入)
+        let mut s = session_with_data();
+        let title_cmd = |r: &WitRenderResult| {
+            r.layers
+                .iter()
+                .flat_map(|l| l.commands.iter())
+                .find(|c| c.cmd_type == "text" && c.text_content.as_deref() == Some("Test"))
+                .unwrap()
+                .clone()
+        };
+        let alpha_of = |c: &WitDrawCmd| match &c.fill {
+            Some(WitPaint::Solid(col)) => deneb_core::Rgba::parse(col).map(|p| p.a).unwrap_or(1.0),
+            _ => 1.0,
+        };
+
+        let early = title_cmd(&s.render(0.1).unwrap());
+        let settled_at_window = title_cmd(&s.render(0.35).unwrap());
+
+        // alpha:窗内早期更低
+        assert!(
+            alpha_of(&early) < alpha_of(&settled_at_window),
+            "alpha early={} settled={}",
+            alpha_of(&early),
+            alpha_of(&settled_at_window)
+        );
+        // slide:t<0.35 相比 t≥0.35 有正(向下)偏移
+        assert!(
+            early.params[1] > settled_at_window.params[1],
+            "y early={} settled={}",
+            early.params[1],
+            settled_at_window.params[1]
+        );
+        // 窗口结束后与稳态 y 一致(偏移归零)
+        let steady = title_cmd(&s.render(1.0).unwrap());
+        assert!((settled_at_window.params[1] - steady.params[1]).abs() < 1e-9);
+    }
+
+    #[test]
     fn test_selected_outline_stroke() {
         let mut s = session_with_data();
         s.render(1.0).unwrap();
         s.set_state(WitInteractionState { hovered: None, selected: vec![2] });
         let r = s.render(1.0).unwrap();
         let layer = r.layers.iter().find(|l| l.kind == "data").unwrap();
-        // 选中柱应有 stroke(focus 色)
-        assert!(layer.commands.iter().any(|c| c.stroke.is_some()), "选中项 outline");
+        // 选中柱应有 stroke(focus 色),且线宽真实消费 outline_width(1.5),
+        // 而非主题默认 1.0
+        let stroked: Vec<&WitDrawCmd> = layer.commands.iter().filter(|c| c.stroke.is_some()).collect();
+        assert_eq!(stroked.len(), 1, "恰好选中项一条 outline");
+        assert_eq!(stroked[0].stroke_width, Some(1.5), "outline 线宽 = outline_width");
     }
 
     #[test]

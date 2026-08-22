@@ -289,13 +289,14 @@ fn compute_axis_layout<T: crate::theme::Theme>(
             }
         }
         deneb_core::DataType::Nominal | deneb_core::DataType::Ordinal => {
-            // 获取唯一类别
+            // 获取唯一类别(保持数据首现顺序 — 确定性:HashSet 随机序会导致
+            // 跨渲染刻度标签洗牌,同 bar.rs 修过的 bug)
+            let mut seen = std::collections::HashSet::new();
             let categories: Vec<String> = column
                 .values
                 .iter()
                 .filter_map(|v| v.as_text().map(|s| s.to_string()))
-                .collect::<std::collections::HashSet<_>>()
-                .into_iter()
+                .filter(|s| seen.insert(s.clone()))
                 .collect();
 
             if categories.is_empty() {

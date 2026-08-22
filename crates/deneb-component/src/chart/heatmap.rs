@@ -154,12 +154,13 @@ impl HeatmapChart {
             }
         })?;
 
+        // X 轴类别(首现序去重 — 确定性:HashSet 随机序会导致跨渲染单元格洗牌)
+        let mut seen = std::collections::HashSet::new();
         let x_categories: Vec<String> = x_column
             .values
             .iter()
             .filter_map(|v| v.as_text().map(|s| s.to_string()))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
+            .filter(|s| seen.insert(s.clone()))
             .collect();
 
         let x_scale = BandScale::new(
@@ -176,12 +177,13 @@ impl HeatmapChart {
             }
         })?;
 
+        // Y 轴类别(首现序去重,同 x — 确定性)
+        let mut seen = std::collections::HashSet::new();
         let y_categories: Vec<String> = y_column
             .values
             .iter()
             .filter_map(|v| v.as_text().map(|s| s.to_string()))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
+            .filter(|s| seen.insert(s.clone()))
             .collect();
 
         let y_scale = BandScale::new(
@@ -710,6 +712,51 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert_eq!(output.hit_regions.len(), 1);
+    }
+
+    #[test]
+    fn test_render_deterministic_across_calls() {
+        // 回归:HashSet 随机序导致单元格位置与轴刻度标签跨渲染洗牌
+        // (条带序不稳定会让 hover/选中重渲染时热力图"乱跳")
+        let spec = create_heatmap_spec();
+        let theme = DefaultTheme;
+        let data = create_heatmap_data();
+
+        let first = HeatmapChart::render(&spec, &theme, &data).unwrap();
+        let cells_of = |out: &ChartOutput| -> Vec<(f64, f64)> {
+            out.layers
+                .get_layer(LayerKind::Data)
+                .unwrap()
+                .commands
+                .semantic
+                .iter()
+                .map(|c| match c {
+                    DrawCmd::Rect { x, y, .. } => (*x, *y),
+                    _ => (0.0, 0.0),
+                })
+                .collect()
+        };
+        // 轴刻度标签序覆盖 layout 层的类别去重路径
+        let axis_labels_of = |out: &ChartOutput| -> Vec<String> {
+            out.layers
+                .get_layer(LayerKind::Axis)
+                .unwrap()
+                .commands
+                .semantic
+                .iter()
+                .filter_map(|c| match c {
+                    DrawCmd::Text { content, .. } => Some(content.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let (c1, l1) = (cells_of(&first), axis_labels_of(&first));
+        assert_eq!(c1.len(), 4);
+        for _ in 0..8 {
+            let again = HeatmapChart::render(&spec, &theme, &data).unwrap();
+            assert_eq!(c1, cells_of(&again), "单元格位置必须跨渲染确定");
+            assert_eq!(l1, axis_labels_of(&again), "轴刻度标签序必须跨渲染确定");
+        }
     }
 
     #[test]

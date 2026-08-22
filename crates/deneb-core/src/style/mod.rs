@@ -18,8 +18,16 @@ pub enum FillStyle {
 /// 描边样式
 #[derive(Clone, Debug, PartialEq)]
 pub enum StrokeStyle {
-    /// 纯色描边，CSS 颜色字符串
+    /// 纯色描边，CSS 颜色字符串（线宽由宿主/主题默认值决定）
     Color(String),
+    /// 纯色描边 + 显式线宽（逻辑像素）— 语义上必须精确控制粗细的场景
+    /// （如选中项 hairline outline 消费 `ChartAnim::outline_width`）
+    WithWidth {
+        /// CSS 颜色字符串
+        color: String,
+        /// 线宽（逻辑像素）
+        width: f64,
+    },
     /// 无描边
     None,
 }
