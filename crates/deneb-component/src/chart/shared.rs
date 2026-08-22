@@ -311,22 +311,28 @@ pub fn render_axes<T: Theme>(
             });
         }
 
-        // Y axis title (optional)
+        // Y axis title (optional) — 竖排(270°,自下而上阅读,行业惯例)
+        //
+        // 水平排布时标题无法塞进左侧 margin(与刻度标签重叠或越界被宿主
+        // 裁剪),竖排条带宽度 ≈ 字高,margin.left 扣除刻度标签后足以容纳。
+        // anchor/baseline 取 Middle/Middle:旋转围绕 anchor 点,文字中心
+        // 恰好落在 (x, plot 中线)。
         if include_y_axis_title {
             if let Some(y_field) = &spec.encoding.y {
                 let title = y_field.title.as_ref().unwrap_or(&y_field.name);
                 let label_style = TextStyle::new()
                     .with_font_size(theme.label_font_size())
                     .with_font_family(theme.font_family())
-                    .with_fill(FillStyle::Color(theme.foreground_color().to_string()));
+                    .with_fill(FillStyle::Color(theme.foreground_color().to_string()))
+                    .with_rotation(270.0);
 
                 output.add_command(DrawCmd::Text {
-                    x: plot_area.x - theme.margin().left + 5.0,
+                    x: plot_area.x - theme.margin().left + 8.0,
                     y: plot_area.y + plot_area.height / 2.0,
                     content: title.clone(),
                     style: label_style,
                     anchor: TextAnchor::Middle,
-                    baseline: TextBaseline::Top,
+                    baseline: TextBaseline::Middle,
                 });
             }
         }

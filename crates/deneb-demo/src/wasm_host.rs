@@ -11,7 +11,7 @@ wasmtime::component::bindgen!({
 use exports::deneb::viz::data_parser::{DataTable as BgDataTable, FieldValue as BgFieldValue};
 use exports::deneb::viz::chart_renderer::{
     ChartSpec as BgChartSpec, DrawCmd as BgDrawCmd, HitRegion as BgHitRegion,
-    Layer as BgLayer, RenderResult as BgRenderResult,
+    Layer as BgLayer, RenderResult as BgRenderResult, InteractionState as BgInteractionState,
 };
 use limpuai::data::types::DataTable as LimpuDataTable;
 
@@ -250,38 +250,64 @@ impl WasmHost {
         Ok(bg_to_wit_data_table(result))
     }
 
-    /// 调用组件的 render 函数
+    /// 创建图表会话 resource(v2)— 返回 ResourceAny 句柄,方法经 chart() 包装调用
+    pub fn create_chart(&mut self, spec: &WitChartSpec) -> Result<wasmtime::component::ResourceAny, WasmHostError> {
+        let bg_spec = wit_to_bg_chart_spec(spec);
+        self.bindings
+            .deneb_viz_chart_renderer()
+            .chart()
+            .call_constructor(&mut self.store, &bg_spec, None)
+            .map_err(|e: wasmtime::Error| WasmHostError::Call(format!("chart constructor: {}", e)))
+    }
+
+    /// 渲染图表(v2 兼容包装:单发语义 — 内部创建会话,渲染 t=1 稳态)
     pub fn render(
         &mut self,
         data: &[u8],
         format: &str,
         spec: &WitChartSpec,
     ) -> Result<WitRenderResult, WasmHostError> {
-        let bg_spec = wit_to_bg_chart_spec(spec);
-        let format_str = format.to_string();
+        let chart = self.create_chart(spec)?;
+        let chart_api = self.bindings.deneb_viz_chart_renderer().chart();
 
-        let result = self.bindings
-            .deneb_viz_chart_renderer()
-            .call_render(&mut self.store, data, &format_str, &bg_spec)
-            .map_err(|e: wasmtime::Error| WasmHostError::Call(e.to_string()))?
+        chart_api
+            .call_update_data(&mut self.store, chart, data, format)
+            .map_err(|e: wasmtime::Error| WasmHostError::Call(format!("update-data: {}", e)))?
+            .map_err(|e: String| WasmHostError::Call(format!("update-data: {}", e)))?;
+
+        let result = chart_api
+            .call_render(&mut self.store, chart, 1.0)
+            .map_err(|e: wasmtime::Error| WasmHostError::Call(format!("render: {}", e)))?
             .map_err(|e: String| WasmHostError::Call(format!("render: {}", e)))?;
 
+        let _ = chart.resource_drop(&mut self.store);
         Ok(bg_to_wit_render_result(result))
     }
 
-    /// 调用组件的 hit-test 函数
+    /// 命中测试(v2:命中区走宿主侧 AABB)
     pub fn hit_test(
         &mut self,
-        result: &WitRenderResult,
+        data: &[u8],
+        format: &str,
+        spec: &WitChartSpec,
         x: f64,
         y: f64,
         tolerance: f64,
     ) -> Result<Option<u32>, WasmHostError> {
-        let bg_result = wit_to_bg_render_result(result);
-        self.bindings
-            .deneb_viz_chart_renderer()
-            .call_hit_test(&mut self.store, &bg_result, x, y, tolerance)
-            .map_err(|e: wasmtime::Error| WasmHostError::Call(e.to_string()))
+        let chart = self.create_chart(spec)?;
+        let chart_api = self.bindings.deneb_viz_chart_renderer().chart();
+        chart_api
+            .call_update_data(&mut self.store, chart, data, format)
+            .map_err(|e: wasmtime::Error| WasmHostError::Call(format!("update-data: {}", e)))?
+            .map_err(|e: String| WasmHostError::Call(format!("update-data: {}", e)))?;
+        let regions = chart_api
+            .call_hit_regions(&mut self.store, chart)
+            .map_err(|e: wasmtime::Error| WasmHostError::Call(format!("hit-regions: {}", e)))?;
+        let _ = chart.resource_drop(&mut self.store);
+        Ok(deneb_wit::lib_mode::hit_test(
+            &regions.into_iter().map(bg_to_wit_hit_region).collect::<Vec<_>>(),
+            x, y, tolerance,
+        ))
     }
 
     /// 获取 engine 引用
@@ -326,27 +352,49 @@ fn bg_to_wit_layer(l: BgLayer) -> WitLayer {
         dirty: l.dirty,
         z_index: l.z_index,
         commands: l.commands.into_iter().map(bg_to_wit_draw_cmd).collect(),
-        hit_regions: l.hit_regions.into_iter().map(|r| WitHitRegion {
-            index: r.index,
-            series: r.series,
-            bounds_x: r.bounds_x,
-            bounds_y: r.bounds_y,
-            bounds_w: r.bounds_w,
-            bounds_h: r.bounds_h,
-        }).collect(),
     }
+}
+
+fn bg_to_wit_paint(p: Option<exports::deneb::viz::chart_renderer::Paint>) -> Option<WitPaint> {
+    p.map(|p| match p {
+        exports::deneb::viz::chart_renderer::Paint::Solid(c) => WitPaint::Solid(c),
+        exports::deneb::viz::chart_renderer::Paint::Gradient(g) => WitPaint::Gradient(WitLinearGradient {
+            x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1,
+            stops: g.stops.into_iter().map(|s| WitGradientStop { pos: s.pos, color: s.color }).collect(),
+        }),
+    })
 }
 
 fn bg_to_wit_draw_cmd(c: BgDrawCmd) -> WitDrawCmd {
     WitDrawCmd {
         cmd_type: c.cmd_type,
         params: c.params,
-        fill: c.fill,
-        stroke: c.stroke,
+        fill: bg_to_wit_paint(c.fill),
+        stroke: bg_to_wit_paint(c.stroke),
         stroke_width: c.stroke_width,
+        corner_radius: c.corner_radius,
         text_content: c.text_content,
+        font: c.font.map(|f| WitFontDesc { family: f.family, weight: f.weight, italic: f.italic }),
         group_depth: c.group_depth,
+        anim: None, // demo 渲染不消费 Tier 2(宿主 echodawn 侧消费)
     }
+}
+
+fn bg_to_wit_hit_region(r: BgHitRegion) -> WitHitRegion {
+    WitHitRegion {
+        index: r.index,
+        series: r.series,
+        bounds_x: r.bounds_x,
+        bounds_y: r.bounds_y,
+        bounds_w: r.bounds_w,
+        bounds_h: r.bounds_h,
+        datum: r.datum.into_iter().map(bg_to_wit_field_value).collect(),
+    }
+}
+
+#[allow(dead_code)]
+fn wit_to_bg_interaction(s: &WitInteractionState) -> BgInteractionState {
+    BgInteractionState { hovered: s.hovered, selected: s.selected.clone() }
 }
 
 // ——— WitXxx → bindgen 生成类型 ———
@@ -366,41 +414,15 @@ fn wit_to_bg_chart_spec(spec: &WitChartSpec) -> BgChartSpec {
         width: spec.width,
         height: spec.height,
         title: spec.title.clone(),
-        theme: spec.theme.clone(),
+        animation: spec.animation.as_ref().map(|a| {
+            exports::deneb::viz::chart_renderer::AnimationConfig {
+                enter_duration_ms: a.enter_duration_ms,
+                stagger_ms: a.stagger_ms,
+                easing: a.easing.clone(),
+                disable: a.disable,
+            }
+        }),
     }
 }
 
-fn wit_to_bg_render_result(r: &WitRenderResult) -> BgRenderResult {
-    BgRenderResult {
-        layers: r.layers.iter().map(wit_to_bg_layer).collect(),
-    }
-}
 
-fn wit_to_bg_layer(l: &WitLayer) -> BgLayer {
-    BgLayer {
-        kind: l.kind.clone(),
-        dirty: l.dirty,
-        z_index: l.z_index,
-        commands: l.commands.iter().map(wit_to_bg_draw_cmd).collect(),
-        hit_regions: l.hit_regions.iter().map(|r| BgHitRegion {
-            index: r.index,
-            series: r.series,
-            bounds_x: r.bounds_x,
-            bounds_y: r.bounds_y,
-            bounds_w: r.bounds_w,
-            bounds_h: r.bounds_h,
-        }).collect(),
-    }
-}
-
-fn wit_to_bg_draw_cmd(c: &WitDrawCmd) -> BgDrawCmd {
-    BgDrawCmd {
-        cmd_type: c.cmd_type.clone(),
-        params: c.params.clone(),
-        fill: c.fill.clone(),
-        stroke: c.stroke.clone(),
-        stroke_width: c.stroke_width,
-        text_content: c.text_content.clone(),
-        group_depth: c.group_depth,
-    }
-}

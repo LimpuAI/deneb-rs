@@ -67,7 +67,7 @@ fn run_wasm(host: &mut WasmHost, data: &[u8]) -> Result<(), Box<dyn std::error::
         width: 800.0,
         height: 600.0,
         title: Some("Heatmap Demo (WASM)".to_string()),
-        theme: parse_theme_name(),
+        animation: None,
     };
 
     let wit_result = host.render(data, "csv", &wit_spec)?;

@@ -517,6 +517,46 @@ impl From<Vec<DrawCmd>> for RenderOutput {
     }
 }
 
+impl DrawCmd {
+    /// 对指令的所有颜色应用 alpha 乘法(递归遍历 Group)
+    ///
+    /// 入场淡入(grid/axis/title 层)的表达方式 — 与 Canvas globalAlpha 语义一致。
+    pub fn apply_alpha(&mut self, alpha: f64) {
+        match self {
+            DrawCmd::Rect { fill, stroke, .. }
+            | DrawCmd::Path { fill, stroke, .. }
+            | DrawCmd::Circle { fill, stroke, .. }
+            | DrawCmd::Arc { fill, stroke, .. } => {
+                if let Some(FillStyle::Color(c)) = fill {
+                    *c = crate::color::with_alpha(c, alpha);
+                }
+                if let Some(StrokeStyle::Color(c)) = stroke {
+                    *c = crate::color::with_alpha(c, alpha);
+                }
+            }
+            DrawCmd::Text { style, .. } => {
+                if let FillStyle::Color(c) = &mut style.fill {
+                    *c = crate::color::with_alpha(c, alpha);
+                }
+            }
+            DrawCmd::Group { items, .. } => {
+                for item in items {
+                    item.apply_alpha(alpha);
+                }
+            }
+        }
+    }
+}
+
+impl RenderOutput {
+    /// 对全部语义指令应用 alpha(见 [`DrawCmd::apply_alpha`])
+    pub fn apply_alpha_to_all(&mut self, alpha: f64) {
+        for cmd in &mut self.semantic {
+            cmd.apply_alpha(alpha);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

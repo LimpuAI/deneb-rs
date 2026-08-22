@@ -1,8 +1,10 @@
-//! deneb-wit-wasm: WASI Component Model 导出层
+//! deneb-wit-wasm: WASI Component Model 导出层(v2 — resource session 协议)
 //!
-//! 使用 wit-bindgen 0.57 从 world.wit 生成 guest 绑定，
+//! 使用 wit-bindgen 0.57 从 world.wit 生成 guest 绑定,
 //! 将 deneb-wit 的功能导出为标准 WASI Component。
 //!
+//! v2:`chart` resource 有状态会话(constructor/update-data/resize/set-state/
+//! set-theme/render(t)/hit-regions),取代 v1 的自由函数 render/hit-test。
 //! Arrow/Parquet 解析通过导入 limpuai:data 解析器组件实现委托。
 
 wit_bindgen::generate!({
@@ -12,18 +14,14 @@ wit_bindgen::generate!({
 });
 
 use deneb_wit::lib_mode;
+use deneb_wit::session::ChartSession;
 use deneb_wit::wit_types::*;
 
-use exports::deneb::viz::chart_renderer::{
-    Guest as ChartRendererGuest, ChartSpec as Cs, DrawCmd as Dc, HitRegion as Hr, Layer as Ly,
-    RenderResult as Rr,
-};
+use exports::deneb::viz::chart_renderer::GuestChart;
 use exports::deneb::viz::data_parser::Guest as DataParserGuest;
 
-// wit-bindgen 生成的 limpuai:data 类型别名
-use limpuai::data::types::{
-    DataTable as LimpuDataTable, FieldValue as LimpuFieldValue,
-};
+mod convert;
+use convert::*;
 
 struct DenebVizComponent;
 
@@ -57,249 +55,106 @@ impl DataParserGuest for DenebVizComponent {
     }
 }
 
-impl ChartRendererGuest for DenebVizComponent {
-    fn render(data: Vec<u8>, format: String, spec: Cs) -> Result<Rr, String> {
-        let wit_table = match format.as_str() {
+// chart-renderer 接口仅含 resource — 接口级 Guest 为空标记,
+// resource 本体在 GuestChart(constructor + 六方法,单 trait)。
+
+/// `chart` resource 实现体 — 持有 deneb-wit ChartSession
+///
+/// trait 方法为 &self(bindgen 约定),会话可变性经 RefCell。
+pub struct ChartResource {
+    session: std::cell::RefCell<ChartSession>,
+}
+
+impl GuestChart for ChartResource {
+    fn new(
+        spec: exports::deneb::viz::chart_renderer::ChartSpec,
+        theme: Option<exports::deneb::viz::chart_renderer::Theme>,
+    ) -> Self {
+        let wit_spec = bindgen_to_wit_chart_spec(spec);
+        let wit_theme = theme.map(bindgen_to_wit_theme);
+        match ChartSession::new(wit_spec, wit_theme) {
+            Ok(session) => Self { session: std::cell::RefCell::new(session) },
+            Err(e) => {
+                // constructor 无错误通道:以最小会话降级,后续 update-data 前 render 报错
+                let fallback = WitChartSpec {
+                    mark: "bar".into(),
+                    x_field: "x".into(),
+                    y_field: "y".into(),
+                    color_field: None,
+                    open_field: None,
+                    high_field: None,
+                    low_field: None,
+                    close_field: None,
+                    theta_field: None,
+                    size_field: None,
+                    width: 1.0,
+                    height: 1.0,
+                    title: None,
+                    animation: None,
+                };
+                match ChartSession::new(fallback, None) {
+                    Ok(session) => Self { session: std::cell::RefCell::new(session) },
+                    Err(_) => panic!("chart constructor failed: {}", e),
+                }
+            }
+        }
+    }
+
+    fn update_data(&self, data: Vec<u8>, format: String) -> Result<(), String> {
+        match format.as_str() {
             "arrow" => {
                 let dt = limpuai::data::arrow_parser::parse(&data)?;
-                limpuai_dt_to_wit(dt)
+                let wit = limpuai_dt_to_wit(dt);
+                let table = deneb_wit::convert::wit_data_table_to_data_table(wit)
+                    .map_err(|e| e.to_string())?;
+                self.session.borrow_mut().set_table(table)
             }
             "parquet" => {
                 let dt = limpuai::data::parquet_parser::parse(&data)?;
-                limpuai_dt_to_wit(dt)
+                let wit = limpuai_dt_to_wit(dt);
+                let table = deneb_wit::convert::wit_data_table_to_data_table(wit)
+                    .map_err(|e| e.to_string())?;
+                self.session.borrow_mut().set_table(table)
             }
-            _ => lib_mode::parse_data(&data, &format)?,
-        };
-
-        let wit_spec = WitChartSpec {
-            mark: spec.mark,
-            x_field: spec.x_field,
-            y_field: spec.y_field,
-            color_field: spec.color_field,
-            open_field: spec.open_field,
-            high_field: spec.high_field,
-            low_field: spec.low_field,
-            close_field: spec.close_field,
-            theta_field: spec.theta_field,
-            size_field: spec.size_field,
-            width: spec.width,
-            height: spec.height,
-            title: spec.title,
-            theme: spec.theme,
-        };
-
-        let wit_result = lib_mode::render_from_wit_table(wit_table, wit_spec)?;
-        Ok(wit_render_result_to_bindgen(wit_result))
-    }
-
-    fn hit_test(render_data: Rr, x: f64, y: f64, tolerance: f64) -> Option<u32> {
-        let wit = bindgen_render_result_to_wit(render_data);
-        lib_mode::hit_test(&wit, x, y, tolerance)
-    }
-}
-
-// WitXxx → wit-bindgen export 类型 (csv/json 路径)
-
-fn wit_data_table_to_bindgen(
-    t: WitDataTable,
-) -> exports::deneb::viz::data_parser::DataTable {
-    exports::deneb::viz::data_parser::DataTable {
-        columns: t
-            .columns
-            .into_iter()
-            .map(|c| exports::deneb::viz::data_parser::SchemaField {
-                name: c.name,
-                data_type: c.data_type,
-            })
-            .collect(),
-        rows: t
-            .rows
-            .into_iter()
-            .map(|row| row.into_iter().map(wit_field_to_bindgen).collect())
-            .collect(),
-    }
-}
-
-fn wit_field_to_bindgen(v: WitFieldValue) -> exports::deneb::viz::data_parser::FieldValue {
-    match v {
-        WitFieldValue::Numeric(f) => exports::deneb::viz::data_parser::FieldValue::Numeric(f),
-        WitFieldValue::Text(s) => exports::deneb::viz::data_parser::FieldValue::Text(s),
-        WitFieldValue::Timestamp(f) => exports::deneb::viz::data_parser::FieldValue::Timestamp(f),
-        WitFieldValue::Boolean(b) => exports::deneb::viz::data_parser::FieldValue::Boolean(b),
-        WitFieldValue::Null => exports::deneb::viz::data_parser::FieldValue::Null,
-    }
-}
-
-// limpuai:data 类型 → wit-bindgen export 类型 (arrow/parquet 路径)
-
-/// Arrow 物理类型 → deneb 语义类型
-fn arrow_type_to_semantic(ty: &str) -> &str {
-    match ty {
-        "Int8" | "Int16" | "Int32" | "Int64" | "UInt8" | "UInt16" | "UInt32" | "UInt64"
-        | "Float16" | "Float32" | "Float64" | "Decimal128" | "Decimal256" => "quantitative",
-        "Date32" | "Date64" | "Timestamp" | "Time32" | "Time64" | "Duration" => "temporal",
-        "Utf8" | "LargeUtf8" | "Binary" | "LargeBinary" => "nominal",
-        "Boolean" => "nominal",
-        _ => "nominal",
-    }
-}
-
-fn limpuai_dt_to_bindgen(
-    dt: LimpuDataTable,
-) -> exports::deneb::viz::data_parser::DataTable {
-    exports::deneb::viz::data_parser::DataTable {
-        columns: dt
-            .columns
-            .into_iter()
-            .map(|c| exports::deneb::viz::data_parser::SchemaField {
-                name: c.name,
-                data_type: arrow_type_to_semantic(&c.data_type).to_string(),
-            })
-            .collect(),
-        rows: dt
-            .rows
-            .into_iter()
-            .map(|row| row.into_iter().map(limpuai_field_to_bindgen).collect())
-            .collect(),
-    }
-}
-
-fn limpuai_field_to_bindgen(
-    v: LimpuFieldValue,
-) -> exports::deneb::viz::data_parser::FieldValue {
-    match v {
-        LimpuFieldValue::Numeric(f) => exports::deneb::viz::data_parser::FieldValue::Numeric(f),
-        LimpuFieldValue::Text(s) => exports::deneb::viz::data_parser::FieldValue::Text(s),
-        LimpuFieldValue::Timestamp(f) => {
-            exports::deneb::viz::data_parser::FieldValue::Timestamp(f)
+            _ => self.session.borrow_mut().update_data(&data, &format),
         }
-        LimpuFieldValue::Boolean(b) => exports::deneb::viz::data_parser::FieldValue::Boolean(b),
-        LimpuFieldValue::Null => exports::deneb::viz::data_parser::FieldValue::Null,
     }
-}
 
-// limpuai:data 类型 → WitXxx (render 路径，复用 lib_mode)
+    fn resize(&self, width: f64, height: f64) {
+        self.session.borrow_mut().resize(width, height);
+    }
 
-fn limpuai_dt_to_wit(dt: LimpuDataTable) -> WitDataTable {
-    WitDataTable {
-        columns: dt
-            .columns
+    fn set_state(&self, state: exports::deneb::viz::chart_renderer::InteractionState) {
+        self.session.borrow_mut().set_state(WitInteractionState {
+            hovered: state.hovered,
+            selected: state.selected,
+        });
+    }
+
+    fn set_theme(&self, theme: exports::deneb::viz::chart_renderer::Theme) {
+        self.session.borrow_mut().set_theme(bindgen_to_wit_theme(theme));
+    }
+
+    fn render(
+        &self,
+        t: f64,
+    ) -> Result<exports::deneb::viz::chart_renderer::RenderResult, String> {
+        let wit = self.session.borrow_mut().render(t)?;
+        Ok(wit_render_result_to_bindgen(wit))
+    }
+
+    fn hit_regions(&self) -> Vec<exports::deneb::viz::chart_renderer::HitRegion> {
+        self.session
+            .borrow()
+            .hit_regions()
             .into_iter()
-            .map(|c| WitSchemaField {
-                name: c.name,
-                data_type: arrow_type_to_semantic(&c.data_type).to_string(),
-            })
-            .collect(),
-        rows: dt
-            .rows
-            .into_iter()
-            .map(|row| row.into_iter().map(limpuai_field_to_wit).collect())
-            .collect(),
+            .map(wit_hit_region_to_bindgen)
+            .collect()
     }
 }
 
-fn limpuai_field_to_wit(v: LimpuFieldValue) -> WitFieldValue {
-    match v {
-        LimpuFieldValue::Numeric(f) => WitFieldValue::Numeric(f),
-        LimpuFieldValue::Text(s) => WitFieldValue::Text(s),
-        LimpuFieldValue::Timestamp(f) => WitFieldValue::Timestamp(f),
-        LimpuFieldValue::Boolean(b) => WitFieldValue::Boolean(b),
-        LimpuFieldValue::Null => WitFieldValue::Null,
-    }
-}
-
-// WitXxx → wit-bindgen chart-renderer 类型
-
-fn wit_render_result_to_bindgen(r: WitRenderResult) -> Rr {
-    Rr {
-        layers: r
-            .layers
-            .into_iter()
-            .map(wit_layer_to_bindgen)
-            .collect(),
-    }
-}
-
-fn wit_layer_to_bindgen(l: WitLayer) -> Ly {
-    Ly {
-        kind: l.kind,
-        dirty: l.dirty,
-        z_index: l.z_index,
-        commands: l
-            .commands
-            .into_iter()
-            .map(wit_draw_cmd_to_bindgen)
-            .collect(),
-        hit_regions: l
-            .hit_regions
-            .into_iter()
-            .map(|r| Hr {
-                index: r.index,
-                series: r.series,
-                bounds_x: r.bounds_x,
-                bounds_y: r.bounds_y,
-                bounds_w: r.bounds_w,
-                bounds_h: r.bounds_h,
-            })
-            .collect(),
-    }
-}
-
-fn wit_draw_cmd_to_bindgen(c: WitDrawCmd) -> Dc {
-    Dc {
-        cmd_type: c.cmd_type,
-        params: c.params,
-        fill: c.fill,
-        stroke: c.stroke,
-        stroke_width: c.stroke_width,
-        text_content: c.text_content,
-        group_depth: c.group_depth,
-    }
-}
-
-// wit-bindgen chart-renderer 类型 → WitXxx
-
-fn bindgen_render_result_to_wit(r: Rr) -> WitRenderResult {
-    WitRenderResult {
-        layers: r
-            .layers
-            .into_iter()
-            .map(|l| WitLayer {
-                kind: l.kind,
-                dirty: l.dirty,
-                z_index: l.z_index,
-                commands: l
-                    .commands
-                    .into_iter()
-                    .map(bindgen_draw_cmd_to_wit)
-                    .collect(),
-                hit_regions: l
-                    .hit_regions
-                    .into_iter()
-                    .map(|r| WitHitRegion {
-                        index: r.index,
-                        series: r.series,
-                        bounds_x: r.bounds_x,
-                        bounds_y: r.bounds_y,
-                        bounds_w: r.bounds_w,
-                        bounds_h: r.bounds_h,
-                    })
-                    .collect(),
-            })
-            .collect(),
-    }
-}
-
-fn bindgen_draw_cmd_to_wit(c: Dc) -> WitDrawCmd {
-    WitDrawCmd {
-        cmd_type: c.cmd_type,
-        params: c.params,
-        fill: c.fill,
-        stroke: c.stroke,
-        stroke_width: c.stroke_width,
-        text_content: c.text_content,
-        group_depth: c.group_depth,
-    }
+impl exports::deneb::viz::chart_renderer::Guest for DenebVizComponent {
+    type Chart = ChartResource;
 }
 
 export!(DenebVizComponent);

@@ -1,4 +1,12 @@
-/// deneb-viz WIT world definition
+/// deneb-viz WIT world definition (v2 — resource session protocol)
+///
+/// v2 变更(相对 v1):
+/// - `chart` resource:有状态会话(constructor/update-data/resize/set-state/set-theme/render(t)/hit-regions)
+/// - draw-cmd 无损化:corner-radius/stroke-width/font/paint(渐变)
+/// - anim-desc:Tier 2 参数动画描述(宿主本地插值,零 wasm 调用)
+/// - hit-region 附带 datum 数据(tooltip);hit-regions 移出 layer(v1 每层重复的修复)
+/// - theme record 注入(修复 v1 spec.theme 被忽略、wasm 路径硬编码 DefaultTheme)
+/// - 移除自由函数 render/hit-test(resource 方法取代;宿主侧 AABB 命中)
 package deneb:viz;
 
 interface data-parser {
@@ -27,6 +35,149 @@ interface data-parser {
 }
 
 interface chart-renderer {
+    use data-parser.{field-value};
+
+    // ---- Tier 2 参数动画(宿主本地插值,循环动画主载体) ----
+
+    /// 可动画属性(MVP 仅 opacity,枚举预留扩展)
+    enum anim-property {
+        opacity,
+    }
+
+    enum loop-mode {
+        once,
+        loop,
+        ping-pong,
+    }
+
+    /// 关键帧 (t, value),t ∈ [0,1];相邻帧间按 easing 字符串插值
+    record keyframe {
+        t: f32,
+        value: f32,
+        easing: string,
+    }
+
+    record anim-desc {
+        property: anim-property,
+        keyframes: list<keyframe>,
+        duration-ms: u32,
+        delay-ms: u32,
+        loop: loop-mode,
+    }
+
+    // ---- 无损绘制描述 ----
+
+    record font-desc {
+        family: option<string>,
+        weight: option<u16>,
+        italic: bool,
+    }
+
+    record gradient-stop {
+        pos: f64,
+        color: string,
+    }
+
+    record linear-gradient {
+        x0: f64,
+        y0: f64,
+        x1: f64,
+        y1: f64,
+        stops: list<gradient-stop>,
+    }
+
+    variant paint {
+        solid(string),
+        gradient(linear-gradient),
+    }
+
+    record draw-cmd {
+        /// "rect" | "path" | "circle" | "arc" | "text"
+        cmd-type: string,
+        /// rect: [x, y, w, h];circle: [cx, cy, r];arc: [cx, cy, r, start, end];
+        /// text: [x, y, font-size, anchor(0=Start,1=Middle,2=End), baseline(0=Top,1=Middle,2=Bottom,3=Alphabetic), rotation-deg(clockwise around anchor; 0 = horizontal)];
+        /// path: 段前缀拼接 0=MoveTo 1=LineTo 2=Bezier 3=Quad 4=Arc 5=Close
+        params: list<f64>,
+        fill: option<paint>,
+        stroke: option<paint>,
+        stroke-width: option<f64>,
+        corner-radius: option<f64>,
+        text-content: option<string>,
+        font: option<font-desc>,
+        group-depth: u32,
+        /// Tier 2 附着(宿主插值)
+        anim: option<anim-desc>,
+    }
+
+    // ---- 命中区(宿主侧 AABB,datum 供 tooltip) ----
+
+    record hit-region {
+        index: u32,
+        series: option<u32>,
+        bounds-x: f64,
+        bounds-y: f64,
+        bounds-w: f64,
+        bounds-h: f64,
+        datum: list<field-value>,
+    }
+
+    record layer {
+        kind: string,
+        dirty: bool,
+        z-index: u32,
+        commands: list<draw-cmd>,
+    }
+
+    record render-result {
+        layers: list<layer>,
+    }
+
+    // ---- 交互态与动画相位 ----
+
+    record interaction-state {
+        hovered: option<u32>,
+        selected: list<u32>,
+    }
+
+    // ---- 主题注入(DesignTokens 派生) ----
+
+    record margin {
+        top: f64,
+        right: f64,
+        bottom: f64,
+        left: f64,
+    }
+
+    record theme {
+        palette: list<string>,
+        background: string,
+        foreground: string,
+        grid: string,
+        axis: string,
+        title-color: string,
+        /// 选中项 outline 色(宿主 input_border_focus token;缺省用 foreground)
+        focus-color: option<string>,
+        font-family: string,
+        base-font-size: f64,
+        title-font-size: f64,
+        label-font-size: f64,
+        tick-font-size: f64,
+        margin: margin,
+    }
+
+    // ---- 入场编排(per-item 编排在提供方插值,总时长由宿主 clip 决定) ----
+
+    record animation-config {
+        /// 宿主入场 clip 总时长(默认 500ms),stagger 归一化基准
+        enter-duration-ms: option<u32>,
+        /// 每项级联相位偏移(默认 24ms),级联总量 cap 400ms
+        stagger-ms: option<f64>,
+        /// per-item 缓动(默认 "cubic-out";支持 "linear"/"cubic-in"/"cubic-out"/"cubic-in-out")
+        easing: option<string>,
+        /// 动画禁用(ReducedMotion / 静态场景)
+        disable: bool,
+    }
+
     record chart-spec {
         mark: string,
         x-field: string,
@@ -41,42 +192,25 @@ interface chart-renderer {
         width: f64,
         height: f64,
         title: option<string>,
-        theme: option<string>,
+        animation: option<animation-config>,
     }
 
-    record draw-cmd {
-        cmd-type: string,
-        params: list<f64>,
-        fill: option<string>,
-        stroke: option<string>,
-        stroke-width: option<f64>,
-        text-content: option<string>,
-        group-depth: u32,
-    }
+    // ---- 有状态会话 ----
 
-    record hit-region {
-        index: u32,
-        series: option<u32>,
-        bounds-x: f64,
-        bounds-y: f64,
-        bounds-w: f64,
-        bounds-h: f64,
+    resource chart {
+        constructor(spec: chart-spec, theme: option<theme>);
+        update-data: func(data: list<u8>, format: string) -> result<_, string>;
+        resize: func(width: f64, height: f64);
+        set-state: func(state: interaction-state);
+        set-theme: func(theme: theme);
+        /// Tier 1 语义动画:t ∈ [0,1] 动画相位。
+        /// 入场:constructor/update-data 后 t 从 0 → 1(grid/axis fade t∈[0,0.3],数据项 stagger 生长 t∈[0.1,1])。
+        /// 状态过渡:set-state 后 t 从 0 → 1(高亮/置灰强度插值)。
+        /// 稳态:t=1;提供方内部缓存非 Data 层。
+        render: func(t: f64) -> result<render-result, string>;
+        /// 命中区(几何为稳态值,resize/update-data 后更新;宿主侧 AABB 命中,零 wasm 调用)
+        hit-regions: func() -> list<hit-region>;
     }
-
-    record layer {
-        kind: string,
-        dirty: bool,
-        z-index: u32,
-        commands: list<draw-cmd>,
-        hit-regions: list<hit-region>,
-    }
-
-    record render-result {
-        layers: list<layer>,
-    }
-
-    render: func(data: list<u8>, format: string, spec: chart-spec) -> result<render-result, string>;
-    hit-test: func(render-data: render-result, x: f64, y: f64, tolerance: f64) -> option<u32>;
 }
 
 world deneb-viz {

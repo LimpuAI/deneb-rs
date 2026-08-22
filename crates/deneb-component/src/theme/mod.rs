@@ -546,6 +546,166 @@ impl Theme for CappuccinoTheme {
     }
 }
 
+/// 主题记录 — 运行时注入的主题值(宿主 DesignTokens 派生,经 WIT theme record 传入)
+///
+/// 与内置主题不同,ThemeRecord 携带值而非静态定义,支持 set-theme 运行时更新。
+#[derive(Clone, Debug, PartialEq)]
+pub struct ThemeRecord {
+    /// 系列调色板(循环取用)
+    pub palette: Vec<String>,
+    /// 背景色
+    pub background: String,
+    /// 前景色(文本/轴线)
+    pub foreground: String,
+    /// 网格色
+    pub grid: String,
+    /// 轴色
+    pub axis: String,
+    /// 标题色
+    pub title_color: String,
+    /// 选中项 outline 色(缺省 foreground)
+    pub focus_color: Option<String>,
+    /// 字体族
+    pub font_family: String,
+    /// 基础字号
+    pub base_font_size: f64,
+    /// 标题字号
+    pub title_font_size: f64,
+    /// 标签字号
+    pub label_font_size: f64,
+    /// 刻度字号
+    pub tick_font_size: f64,
+    /// 边距 (top, right, bottom, left)
+    pub margin: (f64, f64, f64, f64),
+}
+
+impl Default for ThemeRecord {
+    fn default() -> Self {
+        // 与 DefaultTheme 视觉等价的缺省值(宿主未注入时的回退)
+        Self {
+            palette: vec![
+                "#1f77b4".to_string(),
+                "#ff7f0e".to_string(),
+                "#2ca02c".to_string(),
+                "#d62728".to_string(),
+                "#9467bd".to_string(),
+                "#8c564b".to_string(),
+                "#e377c2".to_string(),
+                "#7f7f7f".to_string(),
+                "#bcbd22".to_string(),
+                "#17becf".to_string(),
+            ],
+            background: "#ffffff".to_string(),
+            foreground: "#333333".to_string(),
+            grid: "#e0e0e0".to_string(),
+            axis: "#333333".to_string(),
+            title_color: "#333333".to_string(),
+            focus_color: None,
+            font_family: "sans-serif".to_string(),
+            base_font_size: 14.0,
+            title_font_size: 16.0,
+            label_font_size: 12.0,
+            tick_font_size: 12.0,
+            margin: (30.0, 20.0, 40.0, 50.0),
+        }
+    }
+}
+
+/// 值驱动的 Theme 实现 — 包装 [`ThemeRecord`],native 与 wasm 路径共用
+///
+/// 修复 v1 wasm 路径硬编码 DefaultTheme 的问题:宿主主题(如 echodawn DesignTokens)
+/// 派生的颜色/字体/边距经 ThemeRecord 无损注入。
+#[derive(Clone, Debug)]
+pub struct ThemeRecordTheme {
+    record: ThemeRecord,
+}
+
+impl ThemeRecordTheme {
+    /// 从记录构造
+    pub fn new(record: ThemeRecord) -> Self {
+        Self { record }
+    }
+
+    /// 借用内部记录
+    pub fn record(&self) -> &ThemeRecord {
+        &self.record
+    }
+}
+
+impl Theme for ThemeRecordTheme {
+    fn name(&self) -> &str {
+        "Record"
+    }
+
+    fn series_color(&self, slot: usize) -> &str {
+        if self.record.palette.is_empty() {
+            return "#1f77b4";
+        }
+        &self.record.palette[slot % self.record.palette.len()]
+    }
+
+    fn background_color(&self) -> &str {
+        &self.record.background
+    }
+
+    fn foreground_color(&self) -> &str {
+        &self.record.foreground
+    }
+
+    fn font_family(&self) -> &str {
+        &self.record.font_family
+    }
+
+    fn font_size(&self) -> f64 {
+        self.record.base_font_size
+    }
+
+    fn title_font_size(&self) -> f64 {
+        self.record.title_font_size
+    }
+
+    fn label_font_size(&self) -> f64 {
+        self.record.label_font_size
+    }
+
+    fn tick_font_size(&self) -> f64 {
+        self.record.tick_font_size
+    }
+
+    fn grid_stroke(&self) -> StrokeStyle {
+        StrokeStyle::Color(self.record.grid.clone())
+    }
+
+    fn axis_stroke(&self) -> StrokeStyle {
+        StrokeStyle::Color(self.record.axis.clone())
+    }
+
+    fn default_stroke_width(&self) -> f64 {
+        1.0
+    }
+
+    fn margin(&self) -> Margin {
+        let (top, right, bottom, left) = self.record.margin;
+        Margin::new(top, right, bottom, left)
+    }
+
+    fn tick_size(&self) -> f64 {
+        6.0
+    }
+
+    fn grid_color(&self) -> &str {
+        &self.record.grid
+    }
+
+    fn axis_color(&self) -> &str {
+        &self.record.axis
+    }
+
+    fn title_color(&self) -> &str {
+        &self.record.title_color
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

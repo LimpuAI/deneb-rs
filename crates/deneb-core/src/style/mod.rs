@@ -96,6 +96,10 @@ pub struct TextStyle {
     pub font_style: FontStyle,
     /// 填充样式
     pub fill: FillStyle,
+    /// 绘制旋转(度,顺时针,绕 anchor 点;0 = 水平)
+    ///
+    /// 典型用途:Y 轴标题竖排(270° = 自下而上阅读,行业惯例)。
+    pub rotation: f64,
 }
 
 impl TextStyle {
@@ -107,6 +111,7 @@ impl TextStyle {
             font_weight: FontWeight::Normal,
             font_style: FontStyle::Normal,
             fill: FillStyle::Color("#000".to_string()),
+            rotation: 0.0,
         }
     }
 
@@ -137,6 +142,12 @@ impl TextStyle {
     /// 设置填充样式
     pub fn with_fill(mut self, fill: FillStyle) -> Self {
         self.fill = fill;
+        self
+    }
+
+    /// 设置绘制旋转(度,顺时针,绕 anchor 点)
+    pub fn with_rotation(mut self, rotation_deg: f64) -> Self {
+        self.rotation = rotation_deg;
         self
     }
 

@@ -141,7 +141,7 @@ mod tests {
             width: 800.0,
             height: 600.0,
             title: Some("Test Chart".to_string()),
-            theme: None,
+            animation: None,
         };
 
         let chart_spec = wit_chart_spec_to_chart_spec(wit_spec).unwrap();
@@ -169,7 +169,7 @@ mod tests {
             width: 400.0,
             height: 300.0,
             title: None,
-            theme: None,
+            animation: None,
         };
 
         // 这个测试验证了错误处理路径
@@ -247,48 +247,36 @@ mod tests {
     }
 
     #[test]
-    fn test_hit_test_empty_result() {
-        let empty_result = WitRenderResult {
-            layers: vec![],
-        };
-
-        let hit = hit_test(&empty_result, 50.0, 50.0, 5.0);
+    fn test_hit_test_empty_regions() {
+        let empty: Vec<WitHitRegion> = vec![];
+        let hit = hit_test(&empty, 50.0, 50.0, 5.0);
         assert!(hit.is_none());
     }
 
     #[test]
     fn test_hit_test_with_region() {
-        let result = WitRenderResult {
-            layers: vec![
-                WitLayer {
-                    kind: "data".to_string(),
-                    dirty: true,
-                    z_index: 3,
-                    commands: vec![],
-                    hit_regions: vec![
-                        WitHitRegion {
-                            index: 0,
-                            series: None,
-                            bounds_x: 10.0,
-                            bounds_y: 20.0,
-                            bounds_w: 100.0,
-                            bounds_h: 50.0,
-                        },
-                    ],
-                },
-            ],
-        };
+        let regions = vec![
+            WitHitRegion {
+                index: 0,
+                series: None,
+                bounds_x: 10.0,
+                bounds_y: 20.0,
+                bounds_w: 100.0,
+                bounds_h: 50.0,
+                datum: vec![],
+            },
+        ];
 
         // 测试命中
-        let hit = hit_test(&result, 50.0, 40.0, 0.0);
+        let hit = hit_test(&regions, 50.0, 40.0, 0.0);
         assert_eq!(hit, Some(0));
 
         // 测试未命中
-        let hit = hit_test(&result, 5.0, 40.0, 0.0);
+        let hit = hit_test(&regions, 5.0, 40.0, 0.0);
         assert!(hit.is_none());
 
         // 测试 tolerance
-        let hit = hit_test(&result, 115.0, 40.0, 5.0);  // 稍微超出边界
+        let hit = hit_test(&regions, 115.0, 40.0, 5.0);  // 稍微超出边界
         assert!(hit.is_some());  // tolerance 应该让它命中
     }
 
@@ -309,7 +297,7 @@ mod tests {
             width: 800.0,
             height: 600.0,
             title: Some("Test".to_string()),
-            theme: None,
+            animation: None,
         };
 
         let json = serde_json::to_string(&spec).unwrap();
