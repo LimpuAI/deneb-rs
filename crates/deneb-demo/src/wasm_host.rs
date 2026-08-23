@@ -13,6 +13,7 @@ use exports::deneb::viz::chart_renderer::{
     ChartSpec as BgChartSpec, DrawCmd as BgDrawCmd, HitRegion as BgHitRegion,
     Layer as BgLayer, RenderResult as BgRenderResult, InteractionState as BgInteractionState,
 };
+use echodawn::canvas::draw::Paint as BgPaint;
 use limpuai::data::types::DataTable as LimpuDataTable;
 
 /// WASM 组件加载或调用错误
@@ -355,10 +356,10 @@ fn bg_to_wit_layer(l: BgLayer) -> WitLayer {
     }
 }
 
-fn bg_to_wit_paint(p: Option<exports::deneb::viz::chart_renderer::Paint>) -> Option<WitPaint> {
+fn bg_to_wit_paint(p: Option<BgPaint>) -> Option<WitPaint> {
     p.map(|p| match p {
-        exports::deneb::viz::chart_renderer::Paint::Solid(c) => WitPaint::Solid(c),
-        exports::deneb::viz::chart_renderer::Paint::Gradient(g) => WitPaint::Gradient(WitLinearGradient {
+        BgPaint::Solid(c) => WitPaint::Solid(c),
+        BgPaint::Gradient(g) => WitPaint::Gradient(WitLinearGradient {
             x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1,
             stops: g.stops.into_iter().map(|s| WitGradientStop { pos: s.pos, color: s.color }).collect(),
         }),

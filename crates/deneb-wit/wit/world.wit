@@ -1,4 +1,9 @@
-/// deneb-viz WIT world definition (v2 — resource session protocol)
+/// deneb-viz WIT world definition (v3 — shared drawing vocabulary)
+///
+/// v3 变更(相对 v2):
+/// - chart-renderer 的绘制词汇表(anim-*/font-desc/paint/gradient-*/draw-cmd/layer)
+///   替换为 `use echodawn:canvas/draw` 共享词汇表(vendored 副本 wit/deps/echodawn-canvas/)
+///   —— 纯文本重组织,零语义变化(字段逐项一致)
 ///
 /// v2 变更(相对 v1):
 /// - `chart` resource:有状态会话(constructor/update-data/resize/set-state/set-theme/render(t)/hit-regions)
@@ -36,78 +41,7 @@ interface data-parser {
 
 interface chart-renderer {
     use data-parser.{field-value};
-
-    // ---- Tier 2 参数动画(宿主本地插值,循环动画主载体) ----
-
-    /// 可动画属性(MVP 仅 opacity,枚举预留扩展)
-    enum anim-property {
-        opacity,
-    }
-
-    enum loop-mode {
-        once,
-        loop,
-        ping-pong,
-    }
-
-    /// 关键帧 (t, value),t ∈ [0,1];相邻帧间按 easing 字符串插值
-    record keyframe {
-        t: f32,
-        value: f32,
-        easing: string,
-    }
-
-    record anim-desc {
-        property: anim-property,
-        keyframes: list<keyframe>,
-        duration-ms: u32,
-        delay-ms: u32,
-        loop: loop-mode,
-    }
-
-    // ---- 无损绘制描述 ----
-
-    record font-desc {
-        family: option<string>,
-        weight: option<u16>,
-        italic: bool,
-    }
-
-    record gradient-stop {
-        pos: f64,
-        color: string,
-    }
-
-    record linear-gradient {
-        x0: f64,
-        y0: f64,
-        x1: f64,
-        y1: f64,
-        stops: list<gradient-stop>,
-    }
-
-    variant paint {
-        solid(string),
-        gradient(linear-gradient),
-    }
-
-    record draw-cmd {
-        /// "rect" | "path" | "circle" | "arc" | "text"
-        cmd-type: string,
-        /// rect: [x, y, w, h];circle: [cx, cy, r];arc: [cx, cy, r, start, end];
-        /// text: [x, y, font-size, anchor(0=Start,1=Middle,2=End), baseline(0=Top,1=Middle,2=Bottom,3=Alphabetic), rotation-deg(clockwise around anchor; 0 = horizontal)];
-        /// path: 段前缀拼接 0=MoveTo 1=LineTo 2=Bezier 3=Quad 4=Arc 5=Close
-        params: list<f64>,
-        fill: option<paint>,
-        stroke: option<paint>,
-        stroke-width: option<f64>,
-        corner-radius: option<f64>,
-        text-content: option<string>,
-        font: option<font-desc>,
-        group-depth: u32,
-        /// Tier 2 附着(宿主插值)
-        anim: option<anim-desc>,
-    }
+    use echodawn:canvas/draw@1.0.0.{anim-property, loop-mode, keyframe, anim-desc, font-desc, gradient-stop, linear-gradient, paint, draw-cmd, layer};
 
     // ---- 命中区(宿主侧 AABB,datum 供 tooltip) ----
 
@@ -119,13 +53,6 @@ interface chart-renderer {
         bounds-w: f64,
         bounds-h: f64,
         datum: list<field-value>,
-    }
-
-    record layer {
-        kind: string,
-        dirty: bool,
-        z-index: u32,
-        commands: list<draw-cmd>,
     }
 
     record render-result {

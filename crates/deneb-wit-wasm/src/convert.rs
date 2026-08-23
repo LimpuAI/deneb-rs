@@ -7,6 +7,7 @@ use crate::limpuai::data::types::{
 
 use crate::exports::deneb::viz::chart_renderer as cr;
 use crate::exports::deneb::viz::data_parser as dp;
+use crate::echodawn::canvas::draw as cw;
 
 // ---------- data-parser:WitDataTable ↔ bindgen / limpuai → Wit ----------
 
@@ -172,10 +173,10 @@ fn wit_layer_to_bindgen(l: WitLayer) -> cr::Layer {
     }
 }
 
-fn wit_paint_to_bindgen(p: WitPaint) -> cr::Paint {
+fn wit_paint_to_bindgen(p: WitPaint) -> cw::Paint {
     match p {
-        WitPaint::Solid(c) => cr::Paint::Solid(c),
-        WitPaint::Gradient(g) => cr::Paint::Gradient(cr::LinearGradient {
+        WitPaint::Solid(c) => cw::Paint::Solid(c),
+        WitPaint::Gradient(g) => cw::Paint::Gradient(cw::LinearGradient {
             x0: g.x0,
             y0: g.y0,
             x1: g.x1,
@@ -183,7 +184,7 @@ fn wit_paint_to_bindgen(p: WitPaint) -> cr::Paint {
             stops: g
                 .stops
                 .into_iter()
-                .map(|s| cr::GradientStop { pos: s.pos, color: s.color })
+                .map(|s| cw::GradientStop { pos: s.pos, color: s.color })
                 .collect(),
         }),
     }
@@ -192,19 +193,19 @@ fn wit_paint_to_bindgen(p: WitPaint) -> cr::Paint {
 fn wit_anim_to_bindgen(a: WitAnimDesc) -> cr::AnimDesc {
     cr::AnimDesc {
         property: match a.property {
-            WitAnimProperty::Opacity => cr::AnimProperty::Opacity,
+            WitAnimProperty::Opacity => cw::AnimProperty::Opacity,
         },
         keyframes: a
             .keyframes
             .into_iter()
-            .map(|k| cr::Keyframe { t: k.t, value: k.value, easing: k.easing })
+            .map(|k| cw::Keyframe { t: k.t, value: k.value, easing: k.easing })
             .collect(),
         duration_ms: a.duration_ms,
         delay_ms: a.delay_ms,
         loop_: match a.loop_mode {
-            WitLoopMode::Once => cr::LoopMode::Once,
-            WitLoopMode::Loop => cr::LoopMode::Loop,
-            WitLoopMode::PingPong => cr::LoopMode::PingPong,
+            WitLoopMode::Once => cw::LoopMode::Once,
+            WitLoopMode::Loop => cw::LoopMode::Loop,
+            WitLoopMode::PingPong => cw::LoopMode::PingPong,
         },
     }
 }
@@ -218,7 +219,7 @@ fn wit_draw_cmd_to_bindgen(c: WitDrawCmd) -> cr::DrawCmd {
         stroke_width: c.stroke_width,
         corner_radius: c.corner_radius,
         text_content: c.text_content,
-        font: c.font.map(|f| cr::FontDesc {
+        font: c.font.map(|f| cw::FontDesc {
             family: f.family,
             weight: f.weight,
             italic: f.italic,
