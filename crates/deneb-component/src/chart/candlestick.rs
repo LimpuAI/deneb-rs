@@ -274,11 +274,9 @@ impl CandlestickChart {
             let body_x = band_center - body_width / 2.0;
 
             let bullish = candle.close >= candle.open;
-            let body_color = if bullish {
-                "#4caf50".to_string() // 绿色
-            } else {
-                "#f44336".to_string() // 红色
-            };
+            // 语义涨跌色(T27:theme 通道,Light/Dark 模式随宿主 tokens)
+            let (up_color, down_color) = _theme.semantic_up_down();
+            let body_color = if bullish { up_color } else { down_color };
 
             let wick_color = body_color.clone();
 
@@ -293,7 +291,10 @@ impl CandlestickChart {
                 ],
                 fill: None,
                 stroke: Some(StrokeStyle::Color(wick_color)),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(i as u32),
+});
 
             // 实体（open-close 矩形）
             let open_y = y_scale.map(candle.open);
@@ -310,7 +311,9 @@ impl CandlestickChart {
                 fill: Some(FillStyle::Color(body_color)),
                 stroke: None,
                 corner_radius: None,
-            });
+                corner_radii: None,
+                id: Some(i as u32),
+});
 
             // HitRegion 覆盖整个 K 线区域
             let region_top = high_y;
@@ -333,7 +336,8 @@ impl CandlestickChart {
                 i,
                 None,
                 row_data,
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
         }
 

@@ -244,7 +244,9 @@ impl HistogramChart {
                 fill: Some(FillStyle::Color(color.to_string())),
                 stroke: None,
                 corner_radius: None,
-            });
+                corner_radii: None,
+                id: Some(i as u32),
+});
 
             let region = HitRegion::from_rect(
                 x_left,
@@ -258,7 +260,8 @@ impl HistogramChart {
                     FieldValue::Numeric(bin.right),
                     FieldValue::Numeric(count),
                 ],
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
         }
 

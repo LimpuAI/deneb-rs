@@ -8,7 +8,7 @@
 //! Arrow/Parquet 解析通过导入 limpuai:data 解析器组件实现委托。
 
 wit_bindgen::generate!({
-    world: "deneb:viz/deneb-viz",
+    world: "deneb:viz/deneb-viz@4.0.0",
     path: "../deneb-wit/wit",
     generate_all,
 });

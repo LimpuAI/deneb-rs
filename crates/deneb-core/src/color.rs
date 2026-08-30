@@ -97,12 +97,28 @@ pub fn with_alpha(color: &str, alpha: f64) -> String {
 
 /// 向白色混合(hover ColorPop 提亮):amount ∈ [0,1]。
 pub fn lighten(color: &str, amount: f64) -> String {
-    match Rgba::parse(color) {
-        Some(rgba) => {
-            let mix = |c: u8| -> u8 { (c as f64 + (255.0 - c as f64) * amount.clamp(0.0, 1.0)).round() as u8 };
-            Rgba { r: mix(rgba.r), g: mix(rgba.g), b: mix(rgba.b), ..rgba }.to_css()
+    mix_toward(color, "#ffffff", amount)
+}
+
+/// 向目标色混合:amount ∈ [0,1](0 = 原色,1 = 目标色)。
+///
+/// hover 提亮语义色通道(theme.hover_color)的混色基准 — 与 `lighten` 的
+/// 向白混合语义同构,只是目标从白色换成主题语义色。解析失败时原样返回
+/// (alpha 通道同样参与插值)。
+pub fn mix_toward(color: &str, target: &str, amount: f64) -> String {
+    match (Rgba::parse(color), Rgba::parse(target)) {
+        (Some(c), Some(t)) => {
+            let a = amount.clamp(0.0, 1.0);
+            let mix = |a0: u8, b0: u8| -> u8 { (a0 as f64 + (b0 as f64 - a0 as f64) * a).round() as u8 };
+            Rgba {
+                r: mix(c.r, t.r),
+                g: mix(c.g, t.g),
+                b: mix(c.b, t.b),
+                a: c.a + (t.a - c.a) * a,
+            }
+            .to_css()
         }
-        None => color.to_string(),
+        _ => color.to_string(),
     }
 }
 
@@ -146,5 +162,24 @@ mod tests {
         assert_eq!(parsed.r, 128);
         assert_eq!(parsed.g, 128);
         assert_eq!(parsed.b, 128);
+    }
+
+    #[test]
+    fn test_mix_toward() {
+        // 0 = 原色,1 = 目标色
+        let out = mix_toward("#000000", "#ffffff", 0.08);
+        let parsed = Rgba::parse(&out).unwrap();
+        assert_eq!(parsed.r, 20);
+        assert_eq!(parsed.g, 20);
+        assert_eq!(parsed.b, 20);
+        // 端点
+        let keep = mix_toward("#123456", "#abcdef", 0.0);
+        let parsed = Rgba::parse(&keep).unwrap();
+        assert_eq!((parsed.r, parsed.g, parsed.b), (0x12, 0x34, 0x56));
+        let full = mix_toward("#123456", "#abcdef", 1.0);
+        let parsed = Rgba::parse(&full).unwrap();
+        assert_eq!((parsed.r, parsed.g, parsed.b), (0xab, 0xcd, 0xef));
+        // 解析失败回退原串
+        assert_eq!(mix_toward("not-a-color", "#ffffff", 0.5), "not-a-color");
     }
 }

@@ -52,7 +52,12 @@ pub fn render_mark_static<T: Theme>(
     }
 }
 
-/// 动画渲染分发 — Bar 支持 Tier 1 语义动画,其余 mark 忽略 t(最终态)
+/// 动画渲染分发 — mark 级 Tier 1 动画(MarkAnim trait)
+///
+/// - Bar:既有参考实现,动画在 `BarChart::render_with_anim` 内联(精确基线
+///   生长语义)——回归锁定,不经 trait 后处理
+/// - 其余 14 种 mark:静态渲染 + `mark_anim` 在 Data 层指令上的后处理
+///   (入场几何/颜色插值 + hover/选中/置灰状态过渡)
 fn render_mark_anim(
     spec: &deneb_component::ChartSpec,
     theme: &ThemeRecordTheme,
@@ -61,7 +66,21 @@ fn render_mark_anim(
 ) -> Result<ChartOutput, String> {
     match spec.mark {
         Mark::Bar => BarChart::render_with_anim(spec, theme, data, anim).map_err(|e| e.to_string()),
-        _ => render_mark_static(spec, theme, data),
+        ref mark => {
+            let mut output = render_mark_static(spec, theme, data)?;
+            if let Some(layer) = output.layers.get_layer_mut(LayerKind::Data) {
+                let cmds = &mut layer.commands.semantic;
+                deneb_component::chart::mark_anim::apply_enter_for(mark, cmds, anim.enter_t, anim);
+                deneb_component::chart::mark_anim::apply_state_for(
+                    mark,
+                    cmds,
+                    &anim.state,
+                    anim.state_t,
+                    anim,
+                );
+            }
+            Ok(output)
+        }
     }
 }
 
@@ -75,6 +94,7 @@ pub fn wit_theme_to_record(theme: WitTheme) -> ThemeRecord {
         axis: theme.axis,
         title_color: theme.title_color,
         focus_color: theme.focus_color,
+        hover_color: theme.hover_color,
         font_family: theme.font_family,
         base_font_size: theme.base_font_size,
         title_font_size: theme.title_font_size,
@@ -379,10 +399,11 @@ impl ChartSession {
             duration_ms: 1800,
             delay_ms: 0,
             loop_mode: WitLoopMode::PingPong,
+            alt_color: None,
         };
         if let Some(layer) = result.layers.iter_mut().find(|l| l.kind == "data") {
             if let Some(cmd) = layer.commands.get_mut(peak_idx) {
-                cmd.anim = Some(anim);
+                cmd.anims = vec![anim];
             }
         }
     }
@@ -506,6 +527,7 @@ impl ChartSession {
                 .unwrap_or_else(|| record.foreground.clone()),
             outline_width: 1.5,
             hover_boost: 0.08,
+            hover_color: record.hover_color.clone(),
         }
     }
 
@@ -752,6 +774,7 @@ mod tests {
             axis: "#444444".to_string(),
             title_color: "#ffffff".to_string(),
             focus_color: Some("#00ff00".to_string()),
+            hover_color: None,
             font_family: "TestFont".to_string(),
             base_font_size: 14.0,
             title_font_size: 18.0,
@@ -775,6 +798,7 @@ mod tests {
             axis: "#444444".to_string(),
             title_color: "#ffffff".to_string(),
             focus_color: None,
+            hover_color: None,
             font_family: "TestFont".to_string(),
             base_font_size: 14.0,
             title_font_size: 18.0,
@@ -849,10 +873,10 @@ mod tests {
         let r = s.render(1.0).unwrap();
         let layer = r.layers.iter().find(|l| l.kind == "data").unwrap();
         let peak = &layer.commands[1];
-        let anim = peak.anim.as_ref().expect("峰值柱应携带 Tier 2 anim");
+        let anim = peak.anims.first().expect("峰值柱应携带 Tier 2 anim");
         assert_eq!(anim.property, WitAnimProperty::Opacity);
         assert_eq!(anim.loop_mode, WitLoopMode::PingPong);
-        assert!(layer.commands.iter().enumerate().all(|(i, c)| i == 1 || c.anim.is_none()));
+        assert!(layer.commands.iter().enumerate().all(|(i, c)| i == 1 || c.anims.is_empty()));
     }
 
     #[test]
@@ -866,9 +890,210 @@ mod tests {
         assert!(!layer.commands.is_empty());
         // disable:不附着 Tier 2 循环(帧内零 anim-desc,宿主判 Done 零持续重绘)
         assert!(
-            !r.layers.iter().any(|l| l.commands.iter().any(|c| c.anim.is_some())),
+            !r.layers.iter().any(|l| l.commands.iter().any(|c| !c.anims.is_empty())),
             "disabled chart must carry no anim-desc"
         );
+    }
+
+    // ---- T24b/T25:mark 级动画泛化(非 Bar mark 的入场 + 状态过渡) ----
+
+    /// 数值 x 的 mark(line/scatter/histogram)用 x 列,类别 mark 用 category 列
+    fn spec_with_mark(mark: &str) -> WitChartSpec {
+        let numeric_x = matches!(mark, "line" | "scatter" | "histogram" | "area" | "contour");
+        WitChartSpec {
+            mark: mark.to_string(),
+            x_field: if numeric_x { "x".to_string() } else { "category".to_string() },
+            y_field: "value".to_string(),
+            color_field: None,
+            open_field: None,
+            high_field: None,
+            low_field: None,
+            close_field: None,
+            theta_field: None,
+            size_field: None,
+            width: 400.0,
+            height: 300.0,
+            title: Some("Test".to_string()),
+            animation: None,
+        }
+    }
+
+    fn session_mark(mark: &str) -> ChartSession {
+        let numeric_x = matches!(mark, "line" | "scatter" | "histogram" | "area" | "contour");
+        let csv = if numeric_x {
+            b"x,value\n0,10\n1,20\n2,15\n3,8".as_slice()
+        } else {
+            b"category,value\nA,10\nB,20\nC,15\nD,8".as_slice()
+        };
+        let mut s = ChartSession::new(spec_with_mark(mark), None).unwrap();
+        s.update_data(csv, "csv").unwrap();
+        s
+    }
+
+    fn data_layer(r: &WitRenderResult) -> &WitLayer {
+        r.layers.iter().find(|l| l.kind == "data").unwrap()
+    }
+
+    #[test]
+    fn test_pie_enter_sweep_grows_end_angle() {
+        // pie sweep:t=0 全部扇形压成零角(end == start);入场中角度更小;
+        // 声明式 hover:扇形 = scale 0.02
+        let mut s = session_mark("pie");
+        let zero = s.render(0.0).unwrap();
+        let arcs: Vec<&WitDrawCmd> = data_layer(&zero)
+            .commands
+            .iter()
+            .filter(|c| c.cmd_type == "arc")
+            .collect();
+        assert!(!arcs.is_empty());
+        for arc in &arcs {
+            assert!(
+                (arc.params[4] - arc.params[3]).abs() < 1e-9,
+                "t=0 扇形应为零角: start={} end={}",
+                arc.params[3],
+                arc.params[4]
+            );
+        }
+        let mid = s.render(0.5).unwrap();
+        let full = s.render(1.0).unwrap();
+        let mid_span: f64 = data_layer(&mid)
+            .commands
+            .iter()
+            .filter(|c| c.cmd_type == "arc")
+            .map(|c| c.params[4] - c.params[3])
+            .sum();
+        let full_span: f64 = data_layer(&full)
+            .commands
+            .iter()
+            .filter(|c| c.cmd_type == "arc")
+            .map(|c| c.params[4] - c.params[3])
+            .sum();
+        assert!(mid_span < full_span, "sweep 应随 t 生长: {mid_span} vs {full_span}");
+
+        // hit-region 声明式 hover:扇形 scale 0.02
+        let hover = s.hit_regions();
+        assert!(hover.iter().all(|r| matches!(&r.hover, Some(h) if h.kind == "scale")), "pie hover = scale");
+    }
+
+    #[test]
+    fn test_scatter_enter_drop_in_scales_radius() {
+        let mut s = session_mark("scatter");
+        let early = s.render(0.2).unwrap();
+        let steady = s.render(1.0).unwrap();
+        let radius_of = |r: &WitRenderResult| -> Vec<f64> {
+            data_layer(r)
+                .commands
+                .iter()
+                .filter(|c| c.cmd_type == "circle")
+                .map(|c| c.params[2])
+                .collect()
+        };
+        let (e, f) = (radius_of(&early), radius_of(&steady));
+        assert!(!f.is_empty());
+        assert!(
+            e.iter().zip(&f).all(|(a, b)| a < b),
+            "drop-in 半径应小于稳态: {:?} vs {:?}",
+            e,
+            f
+        );
+        // 命令身份:id = hit-region index
+        assert!(data_layer(&steady).commands.iter().all(|c| c.id.is_some()), "scatter 点 id 全接线");
+    }
+
+    #[test]
+    fn test_line_enter_draw_on_truncates_path() {
+        let mut s = session_mark("line");
+        let early = s.render(0.3).unwrap();
+        // 淡入相位在 [0, 0.15] — 采样点必须落在窗口内才有半透明
+        let fade_phase = s.render(0.05).unwrap();
+        let steady = s.render(1.0).unwrap();
+        let seg_count = |r: &WitRenderResult| -> usize {
+            data_layer(r)
+                .commands
+                .iter()
+                .filter(|c| c.cmd_type == "path")
+                .map(|c| c.params.len() / 3) // MoveTo/LineTo = 3 参数/段
+                .sum()
+        };
+        assert!(seg_count(&early) < seg_count(&steady), "draw-on 应截断折线");
+        // 入场中 stroke 带 alpha(淡入相位)
+        let stroke_alpha = |r: &WitRenderResult| {
+            data_layer(r)
+                .commands
+                .iter()
+                .find(|c| c.cmd_type == "path")
+                .and_then(|c| c.stroke.as_ref())
+                .and_then(|p| match p {
+                    WitPaint::Solid(c) => deneb_core::Rgba::parse(c).map(|x| x.a),
+                    _ => None,
+                })
+                .unwrap_or(1.0)
+        };
+        assert!(stroke_alpha(&fade_phase) < 0.999, "淡入窗口内折线半透明");
+        assert!((stroke_alpha(&early) - 1.0).abs() < 1e-9, "淡出窗口后(draw-on 中段)满色");
+        assert!((stroke_alpha(&steady) - 1.0).abs() < 1e-9, "稳态满色");
+    }
+
+    #[test]
+    fn test_non_bar_state_hover_and_dim() {
+        // apply_state 推广:pie hover 提亮 + 选中置灰/outline
+        let mut s = session_mark("pie");
+        s.render(1.0).unwrap();
+        s.set_state(WitInteractionState { hovered: Some(0), selected: vec![1] });
+        let r = s.render(1.0).unwrap();
+        let arcs: Vec<&WitDrawCmd> = data_layer(&r)
+            .commands
+            .iter()
+            .filter(|c| c.cmd_type == "arc")
+            .collect();
+        assert!(arcs.len() >= 2);
+        // hover(index 0):提亮输出 rgba
+        assert!(
+            matches!(&arcs[0].fill, Some(WitPaint::Solid(c)) if c.starts_with("rgba")),
+            "hover 扇形提亮: {:?}",
+            arcs[0].fill
+        );
+        // 选中(index 1):outline stroke
+        assert!(arcs[1].stroke.is_some(), "选中扇形 outline");
+        // 非选中(index 2):置灰 0.32
+        if let Some(untouched) = arcs.get(2) {
+            assert!(
+                matches!(&untouched.fill, Some(WitPaint::Solid(c)) if deneb_core::Rgba::parse(c).map(|p| (p.a - 0.32).abs() < 0.01).unwrap_or(false)),
+                "非选中扇形置灰: {:?}",
+                untouched.fill
+            );
+        }
+    }
+
+    #[test]
+    fn test_histogram_enter_grows_from_baseline() {
+        let mut s = session_mark("histogram");
+        let early = s.render(0.2).unwrap();
+        let steady = s.render(1.0).unwrap();
+        let bottom_of = |r: &WitRenderResult| -> Vec<f64> {
+            data_layer(r)
+                .commands
+                .iter()
+                .filter(|c| c.cmd_type == "rect")
+                .map(|c| c.params[1] + c.params[3]) // y + h
+                .collect()
+        };
+        let (e, f) = (bottom_of(&early), bottom_of(&steady));
+        assert_eq!(e.len(), f.len());
+        // 底边锚定:y+h 恒定
+        for (a, b) in e.iter().zip(&f) {
+            assert!((a - b).abs() < 1e-6, "柱底边锚定: {a} vs {b}");
+        }
+        // 早期高度更小
+        let h_of = |r: &WitRenderResult| -> f64 {
+            data_layer(r)
+                .commands
+                .iter()
+                .filter(|c| c.cmd_type == "rect")
+                .map(|c| c.params[3])
+                .sum()
+        };
+        assert!(h_of(&early) < h_of(&steady));
     }
 
     #[test]
@@ -877,7 +1102,7 @@ mod tests {
         let mut s = session_with_data();
         let r = s.render(1.0).unwrap();
         assert!(
-            r.layers.iter().any(|l| l.commands.iter().any(|c| c.anim.is_some())),
+            r.layers.iter().any(|l| l.commands.iter().any(|c| !c.anims.is_empty())),
             "single-series bar should carry peak-emphasis anim-desc"
         );
     }

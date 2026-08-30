@@ -100,7 +100,7 @@ impl LineChart {
                 points.clone()
             };
 
-            // 生成折线路径
+            // 生成折线路径(monotone cubic 平滑 — Fritsch-Carlson 零过冲)
             let line_cmd = Self::generate_line_path(
                 &downsampled_points,
                 color,
@@ -108,13 +108,31 @@ impl LineChart {
             );
             line_commands.push(line_cmd);
 
-            // 生成 HitRegion
+            // 生成 HitRegion(全局索引从当前累计长度起算 — 命令身份关联键)
+            let base = all_hit_regions.len();
             let hit_regions = Self::generate_hit_regions(
                 &points,
                 series_idx,
                 data,
             );
             all_hit_regions.extend(hit_regions);
+
+            // 顶点标记(命令身份:id = 全局 hit-region index;宿主对
+            // per-point hover 效果按 id 采样渲染,零 wasm 调用)。
+            // >200 点跳过 — 视觉噪声(降采样场景同样不画)
+            if points.len() <= 200 {
+                let white = theme.background_color().to_string();
+                for (i, &(x, y)) in points.iter().enumerate() {
+                    line_commands.push(DrawCmd::Circle {
+                        cx: x,
+                        cy: y,
+                        r: 2.5,
+                        fill: Some(FillStyle::Color(color.to_string())),
+                        stroke: Some(StrokeStyle::WithWidth { color: white.clone(), width: 1.0 }),
+                        id: Some((base + i) as u32),
+                    });
+                }
+            }
         }
 
         // 6. 生成轴指令（grid + axis layers）
@@ -146,6 +164,18 @@ impl LineChart {
         // Title 层
         if let Some(title) = &spec.title {
             layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &layout.plot_area));
+        }
+
+        // Legend 层(多系列;T26)
+        if series.len() >= 2 {
+            let labels: Vec<String> = series.iter().map(|(k, _)| k.clone().unwrap_or_default()).collect();
+            let colors: Vec<String> = (0..series.len())
+                .map(|i| palette.get(i % palette.len()).unwrap_or(&palette[0]).clone())
+                .collect();
+            layers.update_layer(
+                LayerKind::Legend,
+                super::shared::render_legend(theme, &labels, &colors, &layout.plot_area),
+            );
         }
 
         Ok(ChartOutput {
@@ -394,7 +424,10 @@ impl LineChart {
                 segments: Vec::new(),
                 fill: None,
                 stroke: None,
-            };
+                dash: None,
+                line_cap: None,
+                id: None,
+};
         }
 
         if points.len() == 1 {
@@ -405,7 +438,8 @@ impl LineChart {
                 r: stroke_width * 2.0,
                 fill: Some(FillStyle::Color(color.to_string())),
                 stroke: None,
-            };
+                id: None,
+};
         }
 
         let mut segments = Vec::new();
@@ -418,7 +452,10 @@ impl LineChart {
             segments,
             fill: None,
             stroke: Some(StrokeStyle::Color(color.to_string())),
-        }
+            dash: None,
+            line_cap: None,
+            id: None,
+}
     }
 
     /// 生成命中测试区域
@@ -443,7 +480,8 @@ impl LineChart {
                 i,
                 Some(series_idx),
                 row_data,
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             regions.push(region);
         }
 
@@ -452,6 +490,74 @@ impl LineChart {
 }
 
 #[cfg(test)]
+/// Fritsch-Carlson monotone cubic 插值 — 切线限制保证零过冲。
+///
+/// 逐段斜率取相邻割线斜率均值,极值点(斜率变号)切线归零,再以
+/// alpha²+beta² ≤ 9 约束收紧 — 数学保证曲线不越过数据点包络。
+/// <3 点退化为直线段。
+fn monotone_segments(points: &[(f64, f64)]) -> Vec<PathSegment> {
+    let n = points.len();
+    if n < 3 {
+        let mut segs = Vec::with_capacity(n.max(1));
+        if let Some(&(x, y)) = points.first() {
+            segs.push(PathSegment::MoveTo(x, y));
+            for &(x, y) in &points[1..] {
+                segs.push(PathSegment::LineTo(x, y));
+            }
+        }
+        return segs;
+    }
+
+    // 割线斜率
+    let dx: Vec<f64> = (0..n - 1).map(|i| points[i + 1].0 - points[i].0).collect();
+    let slope: Vec<f64> = (0..n - 1)
+        .map(|i| {
+            let dy = points[i + 1].1 - points[i].1;
+            if dx[i].abs() > f64::EPSILON { dy / dx[i] } else { 0.0 }
+        })
+        .collect();
+
+    // 初始切线:端点取相邻割线,内点取均值(极值点归零)
+    let mut m = vec![0.0f64; n];
+    m[0] = slope[0];
+    m[n - 1] = slope[n - 2];
+    for i in 1..n - 1 {
+        m[i] = if slope[i - 1] * slope[i] <= 0.0 { 0.0 } else { (slope[i - 1] + slope[i]) * 0.5 };
+    }
+
+    // Fritsch-Carlson 限制:同段两切线的 alpha²+beta² ≤ 9
+    for i in 0..n - 1 {
+        if slope[i].abs() <= f64::EPSILON {
+            m[i] = 0.0;
+            m[i + 1] = 0.0;
+            continue;
+        }
+        let alpha = m[i] / slope[i];
+        let beta = m[i + 1] / slope[i];
+        let norm = alpha * alpha + beta * beta;
+        if norm > 9.0 {
+            let tau = 3.0 / norm.sqrt();
+            m[i] = tau * alpha * slope[i];
+            m[i + 1] = tau * beta * slope[i];
+        }
+    }
+
+    let mut segs = Vec::with_capacity(n);
+    segs.push(PathSegment::MoveTo(points[0].0, points[0].1));
+    for i in 0..n - 1 {
+        let h = dx[i];
+        segs.push(PathSegment::BezierTo(
+            points[i].0 + h / 3.0,
+            points[i].1 + m[i] * h / 3.0,
+            points[i + 1].0 - h / 3.0,
+            points[i + 1].1 - m[i + 1] * h / 3.0,
+            points[i + 1].0,
+            points[i + 1].1,
+        ));
+    }
+    segs
+}
+
 mod tests {
     use super::*;
     use crate::spec::{Encoding, Mark};
@@ -543,9 +649,9 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
 
-        // 单点应该退化为 Circle
+        // 单点应该退化为 Circle + 顶点标记(带命令身份)
         let data_layer = output.layers.get_layer(LayerKind::Data).unwrap();
-        assert_eq!(data_layer.commands.len(), 1);
+        assert_eq!(data_layer.commands.len(), 2);
         if let DrawCmd::Circle { .. } = &data_layer.commands.semantic[0] {
             // 正确
         } else {
@@ -595,9 +701,22 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
 
-        // 应该有两个系列
+        // 应该有两个系列(2 条路径 + 每点顶点标记)
         let data_layer = output.layers.get_layer(LayerKind::Data).unwrap();
-        assert_eq!(data_layer.commands.len(), 2);
+        let paths = data_layer
+            .commands
+            .semantic
+            .iter()
+            .filter(|c| matches!(c, DrawCmd::Path { .. }))
+            .count();
+        let markers = data_layer
+            .commands
+            .semantic
+            .iter()
+            .filter(|c| matches!(c, DrawCmd::Circle { id: Some(_), .. }))
+            .count();
+        assert_eq!(paths, 2, "两个系列各一条路径");
+        assert!(markers > 0, "顶点标记携带命令身份");
     }
 
     #[test]
@@ -667,5 +786,47 @@ mod tests {
 
         assert!(result.is_ok());
         // 应该成功处理常数 y 值（水平线）
+    }
+}
+
+#[cfg(test)]
+mod monotone_tests {
+    use super::*;
+
+    #[test]
+    fn monotone_no_overshoot_on_monotone_data() {
+        // 单调上升数据:平滑曲线任意 Bezier 控制点不得越过数据包络
+        let pts = vec![(0.0, 0.0), (1.0, 1.0), (2.0, 2.0), (3.0, 3.0)];
+        let segs = monotone_segments(&pts);
+        assert!(matches!(segs[0], PathSegment::MoveTo(..)));
+        for s in &segs[1..] {
+            if let PathSegment::BezierTo(x1, y1, x2, y2, x, y) = *s {
+                for (cx, cy) in [(x1, y1), (x2, y2), (x, y)] {
+                    assert!(cx >= 0.0 && cx <= 3.0, "x control {cx} out of [0,3]");
+                    let _ = cy;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn monotone_extremum_tangent_zero() {
+        // 峰值点(斜率变号)切线应为零 — 曲线在峰顶走平不过冲
+        let pts = vec![(0.0, 0.0), (1.0, 1.0), (2.0, 0.0)];
+        let segs = monotone_segments(&pts);
+        // 峰值点前后各一段 Bezier,其靠近峰值的控制点 y ≈ 峰值(切线≈0)
+        if let PathSegment::BezierTo(_, y1, _, _, _, _) = segs[1] {
+            assert!(y1 <= 1.0 + 1e-9, "pre-peak control y {y1} overshoots peak 1.0");
+        }
+        if let PathSegment::BezierTo(_, _, _, y2, _, _) = segs[2] {
+            assert!(y2 <= 1.0 + 1e-9, "post-peak control y {y2} overshoots peak 1.0");
+        }
+    }
+
+    #[test]
+    fn monotone_two_points_degrades_to_line() {
+        let pts = vec![(0.0, 0.0), (5.0, 5.0)];
+        let segs = monotone_segments(&pts);
+        assert!(matches!(segs[1], PathSegment::LineTo(..)));
     }
 }

@@ -109,7 +109,8 @@ impl ScatterChart {
                     r: radius,
                     fill: Some(FillStyle::Color(color.to_string())),
                     stroke: None,
-                };
+                    id: Some(*original_idx as u32),
+};
                 scatter_commands.push(circle);
 
                 // 生成 HitRegion
@@ -125,7 +126,8 @@ impl ScatterChart {
                     *original_idx,
                     Some(series_idx),
                     row_data,
-                );
+                )
+                .with_hover(HoverEffect::brighten(0.08));
                 all_hit_regions.push(region);
             }
         }
@@ -158,6 +160,18 @@ impl ScatterChart {
         // Title 层
         if let Some(title) = &spec.title {
             layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &layout.plot_area));
+        }
+
+        // Legend 层(多系列;T26)
+        if series.len() >= 2 {
+            let labels: Vec<String> = series.iter().map(|(k, _)| k.clone().unwrap_or_default()).collect();
+            let colors: Vec<String> = (0..series.len())
+                .map(|i| palette.get(i % palette.len()).unwrap_or(&palette[0]).clone())
+                .collect();
+            layers.update_layer(
+                LayerKind::Legend,
+                super::shared::render_legend(theme, &labels, &colors, &layout.plot_area),
+            );
         }
 
         Ok(ChartOutput {

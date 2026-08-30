@@ -343,7 +343,7 @@ impl BarChart {
     /// 渲染柱子(Tier 1 动画 + 交互渲染态)
     ///
     /// - 入场:柱高 = 最终高度 × ease(item_progress(t))(stagger 级联)
-    /// - hover:提亮(hover_boost 向白混合,即时)
+    /// - hover:提亮(hover_boost 向 hover_color 语义色/白色混合,即时)
     /// - selected:满色 + focus outline stroke;其余项 alpha × dim_factor(state_t 插值)
     /// - 命中区恒为稳态几何(动画期间交互按最终位置命中)
     #[allow(clippy::too_many_arguments)]
@@ -414,7 +414,8 @@ impl BarChart {
                 // 交互渲染态:色相处理顺序 = hover 提亮 → 未选中置灰
                 let mut fill_color = base_color.clone();
                 if anim.state.hovered == Some(*row_idx) {
-                    fill_color = lighten(&fill_color, anim.hover_boost);
+                    // hover 提亮:theme.hover_color 语义色为基准(None 时向白混合近似)
+                    fill_color = anim.hover_brighten(&fill_color);
                 }
                 let selected = anim.state.is_selected(*row_idx);
                 // hairline outline:形状+颜色承载语义,线宽真实消费 outline_width
@@ -441,10 +442,13 @@ impl BarChart {
                         fill: Some(FillStyle::Color(fill_color)),
                         stroke,
                         corner_radius: Some(BAR_CORNER_RADIUS),
-                    });
+                        corner_radii: None,
+                        // id = 命中区索引(命令身份,宿主 per-item 声明式效果关联键)
+                        id: Some(*row_idx as u32),
+});
                 }
 
-                // 创建 HitRegion(稳态几何)
+                // 创建 HitRegion(稳态几何;声明式 hover:柱体提亮 8%)
                 let region = HitRegion::from_rect(
                     bar_x,
                     final_y,
@@ -453,7 +457,8 @@ impl BarChart {
                     *row_idx,
                     if series_count > 1 { Some(series_idx) } else { None },
                     row_data.clone(),
-                );
+                )
+                .with_hover(HoverEffect::brighten(0.08));
                 hit_regions.push(region);
             }
         }
@@ -813,7 +818,7 @@ mod tests {
                 .semantic
                 .iter()
                 .map(|c| match c {
-                    DrawCmd::Rect { x, y, height, .. } => (*x, *height),
+                    DrawCmd::Rect { x, height, .. } => (*x, *height),
                     _ => (0.0, 0.0),
                 })
                 .collect()

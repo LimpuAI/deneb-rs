@@ -396,7 +396,10 @@ impl BoxPlotChart {
                 ],
                 fill: None,
                 stroke: Some(whisker_stroke.clone()),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(group_idx as u32),
+});
 
             // 上须：从 Q3 到 max
             output.add_command(DrawCmd::Path {
@@ -406,7 +409,10 @@ impl BoxPlotChart {
                 ],
                 fill: None,
                 stroke: Some(whisker_stroke.clone()),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(group_idx as u32),
+});
 
             // 须端（水平线）
             let cap_half = box_half_width * 0.5;
@@ -417,7 +423,10 @@ impl BoxPlotChart {
                 ],
                 fill: None,
                 stroke: Some(whisker_stroke.clone()),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(group_idx as u32),
+});
             output.add_command(DrawCmd::Path {
                 segments: vec![
                     PathSegment::MoveTo(band_center - cap_half, whisker_max_y),
@@ -425,7 +434,10 @@ impl BoxPlotChart {
                 ],
                 fill: None,
                 stroke: Some(whisker_stroke.clone()),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(group_idx as u32),
+});
 
             // 箱体矩形
             output.add_command(DrawCmd::Rect {
@@ -436,7 +448,9 @@ impl BoxPlotChart {
                 fill: Some(FillStyle::Color(color)),
                 stroke: Some(StrokeStyle::Color(median_color.clone())),
                 corner_radius: None,
-            });
+                corner_radii: None,
+                id: Some(group_idx as u32),
+});
 
             // 中位数线
             let median_y = y_scale.map(stats.median);
@@ -447,7 +461,10 @@ impl BoxPlotChart {
                 ],
                 fill: None,
                 stroke: Some(StrokeStyle::Color(median_color.clone())),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(group_idx as u32),
+});
 
             // 命中区域（整个箱体+须的范围）
             let total_min_y = whisker_min_y.min(whisker_max_y);
@@ -467,7 +484,8 @@ impl BoxPlotChart {
                     FieldValue::Numeric(stats.q3),
                     FieldValue::Numeric(stats.max),
                 ],
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
 
             // 异常值（圆点）
@@ -480,7 +498,8 @@ impl BoxPlotChart {
                     r: point_radius,
                     fill: Some(FillStyle::Color(outlier_color.clone())),
                     stroke: None,
-                });
+                    id: Some(group_idx as u32),
+});
 
                 let outlier_region = HitRegion::from_point(
                     band_center,
@@ -492,7 +511,8 @@ impl BoxPlotChart {
                         FieldValue::Text(category.clone()),
                         FieldValue::Numeric(outlier_val),
                     ],
-                );
+                )
+                .with_hover(HoverEffect::brighten(0.08));
                 hit_regions.push(outlier_region);
             }
         }

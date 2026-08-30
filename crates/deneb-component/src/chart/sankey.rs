@@ -358,7 +358,10 @@ impl SankeyChart {
                 segments,
                 fill: Some(FillStyle::Color(Self::with_alpha(&link.color, 0.5))),
                 stroke: Some(StrokeStyle::Color(Self::with_alpha(&link.color, 0.8))),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
         }
 
         // 渲染节点
@@ -374,7 +377,9 @@ impl SankeyChart {
                 fill: Some(FillStyle::Color(node.color.clone())),
                 stroke: None,
                 corner_radius: Some(2.0),
-            });
+                corner_radii: None,
+                id: Some(idx as u32),
+});
 
             // 节点标签
             let label_style = TextStyle::new()
@@ -411,7 +416,8 @@ impl SankeyChart {
                 idx,
                 None,
                 vec![FieldValue::Text(node.label.clone()), FieldValue::Numeric(node.value)],
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
         }
 

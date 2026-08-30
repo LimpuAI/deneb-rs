@@ -223,7 +223,10 @@ impl RadarChart {
                 segments,
                 fill: None,
                 stroke: Some(theme.grid_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
         }
 
         // 轴线（中心到每个顶点）
@@ -239,7 +242,10 @@ impl RadarChart {
                 ],
                 fill: None,
                 stroke: Some(theme.grid_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
         }
 
         // 维度标签（顶点外侧）
@@ -357,7 +363,10 @@ impl RadarChart {
                 segments: segments.clone(),
                 fill: Some(FillStyle::Color(Self::with_alpha(&color, 0.2))),
                 stroke: Some(StrokeStyle::Color(color.clone())),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             // 数据点标记 + HitRegion
             for (dim_idx, dim_name) in dimensions.iter().enumerate() {
@@ -368,17 +377,21 @@ impl RadarChart {
                 let px = cx + r * angle.cos();
                 let py = cy + r * angle.sin();
 
-                // 小圆点
+                // 该维度对应的数据行(顶点圆点与命中区共用)
+                let vertex_row = entries.iter().find(|(x, _, _)| *x == *dim_name).map(|&(_, _, r)| r);
+
+                // 小圆点(id = 顶点行索引)
                 output.add_command(DrawCmd::Circle {
                     cx: px,
                     cy: py,
                     r: 3.0,
                     fill: Some(FillStyle::Color(color.clone())),
                     stroke: None,
-                });
+                    id: vertex_row.map(|r| r as u32),
+});
 
                 // HitRegion
-                if let Some(&(_, _, row_idx)) = entries.iter().find(|(x, _, _)| *x == *dim_name) {
+                if let Some(row_idx) = vertex_row {
                     let mut row_data = Vec::new();
                     for column in &data.columns {
                         if let Some(value) = column.get(row_idx) {
@@ -393,7 +406,7 @@ impl RadarChart {
                         row_idx,
                         Some(series_idx),
                         row_data,
-                    ));
+                    ).with_hover(HoverEffect::brighten(0.08)));
                 }
             }
         }

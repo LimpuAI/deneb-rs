@@ -255,6 +255,8 @@ impl WaterfallChart {
         let mut output = RenderOutput::new();
         let mut hit_regions = Vec::new();
 
+        // 语义涨跌色(T27:theme 通道,去硬编码绿/红)
+        let (up_color, down_color) = theme.semantic_up_down();
         let baseline_zero = y_scale.map(0.0);
 
         for (i, bar) in bars.iter().enumerate() {
@@ -280,11 +282,11 @@ impl WaterfallChart {
                 if bar.value >= 0.0 {
                     // 正值：绿色
                     let height = (baseline_px - top_px).max(1.0);
-                    (top_px, height, "#4caf50".to_string())
+                    (top_px, height, up_color.clone())
                 } else {
-                    // 负值：红色
+                    // 负值：跌色
                     let height = (top_px - baseline_px).max(1.0);
-                    (baseline_px, height, "#f44336".to_string())
+                    (baseline_px, height, down_color.clone())
                 }
             };
 
@@ -296,7 +298,9 @@ impl WaterfallChart {
                 fill: Some(FillStyle::Color(color)),
                 stroke: None,
                 corner_radius: None,
-            });
+                corner_radii: None,
+                id: Some(i as u32),
+});
 
             // 收集行数据
             let row_data = if i < data.row_count() {
@@ -316,7 +320,8 @@ impl WaterfallChart {
                 i,
                 None,
                 row_data,
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
         }
 
@@ -343,7 +348,10 @@ impl WaterfallChart {
                 ],
                 fill: None,
                 stroke: Some(theme.axis_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             let tick_size = theme.layout_config().tick_length;
             // 使用瀑布柱的标签
@@ -362,7 +370,10 @@ impl WaterfallChart {
                     ],
                     fill: None,
                     stroke: Some(theme.axis_stroke()),
-                });
+                    dash: None,
+                    line_cap: None,
+                    id: None,
+});
 
                 let text_style = TextStyle::new()
                     .with_font_size(theme.tick_font_size())
@@ -406,7 +417,10 @@ impl WaterfallChart {
                 ],
                 fill: None,
                 stroke: Some(theme.axis_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             let tick_size = theme.layout_config().tick_length;
             for (tick_pos, label) in y_axis.tick_positions.iter().zip(y_axis.tick_labels.iter()) {
@@ -417,7 +431,10 @@ impl WaterfallChart {
                     ],
                     fill: None,
                     stroke: Some(theme.axis_stroke()),
-                });
+                    dash: None,
+                    line_cap: None,
+                    id: None,
+});
 
                 let text_style = TextStyle::new()
                     .with_font_size(theme.tick_font_size())

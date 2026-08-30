@@ -98,6 +98,28 @@ pub trait Theme: Clone {
         (0..n).map(|i| self.series_color(i).to_string()).collect()
     }
 
+    /// 语义涨跌色对(T27:烛台/瀑布 bull-bear 去硬编码)。
+    ///
+    /// 槽位约定(与宿主 chart_theme_from_tokens 派生序一致):
+    /// slot 2 = success(涨)/ slot 4 = error(跌);series_color 内部
+    /// 取模循环,短调色板主题自动回退(双色区分始终保留)
+    fn semantic_up_down(&self) -> (String, String) {
+        (
+            self.series_color(2).to_string(),
+            self.series_color(4).to_string(),
+        )
+    }
+
+    /// 发散色标三锚点(T27:热图 colorbar 去硬编码)— 低/error →
+    /// 中/background → 高/success,保持"低冷高暖"的发散语义
+    fn diverging_anchors(&self) -> (String, String, String) {
+        (
+            self.series_color(4).to_string(),
+            self.background_color().to_string(),
+            self.series_color(2).to_string(),
+        )
+    }
+
     /// 获取背景颜色
     fn background_color(&self) -> &str;
 
@@ -144,6 +166,29 @@ pub trait Theme: Clone {
 
     /// 标题颜色
     fn title_color(&self) -> &str;
+
+    /// hover 提亮语义色(DesignTokens 派生;None = 退化为向白混合近似)
+    fn hover_color(&self) -> Option<String> {
+        None
+    }
+
+    /// 语义色槽 — palette 前 5 色约定 primary/secondary/success/warning/error。
+    ///
+    /// candlestick/waterfall 的 bull/bear、heatmap 发散色标等语义色一律
+    /// 取自槽位而非硬编码,主题(含 ThemeRecord 注入)全权决定最终颜色。
+    fn success_color(&self) -> String {
+        self.series_color(2).to_string()
+    }
+
+    /// 语义色槽:warning(占位 slot[3],当前无消费者)
+    fn warning_color(&self) -> String {
+        self.series_color(3).to_string()
+    }
+
+    /// 语义色槽:error(bear/负向端)
+    fn error_color(&self) -> String {
+        self.series_color(4).to_string()
+    }
 
     /// 布局配置
     fn layout_config(&self) -> LayoutConfig {
@@ -565,6 +610,8 @@ pub struct ThemeRecord {
     pub title_color: String,
     /// 选中项 outline 色(缺省 foreground)
     pub focus_color: Option<String>,
+    /// hover 提亮语义色(缺省 = guest 侧向白混合近似)
+    pub hover_color: Option<String>,
     /// 字体族
     pub font_family: String,
     /// 基础字号
@@ -601,6 +648,7 @@ impl Default for ThemeRecord {
             axis: "#333333".to_string(),
             title_color: "#333333".to_string(),
             focus_color: None,
+            hover_color: None,
             font_family: "sans-serif".to_string(),
             base_font_size: 14.0,
             title_font_size: 16.0,
@@ -703,6 +751,10 @@ impl Theme for ThemeRecordTheme {
 
     fn title_color(&self) -> &str {
         &self.record.title_color
+    }
+
+    fn hover_color(&self) -> Option<String> {
+        self.record.hover_color.clone()
     }
 }
 

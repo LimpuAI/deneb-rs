@@ -41,10 +41,16 @@ pub mod wit_types {
         Null,
     }
 
-    /// WIT 可动画属性(Tier 2;MVP 仅 opacity)
+    /// WIT 可动画属性(Tier 2;canvas@2.0.0 七通道:transform 组 + color + stroke-width)
     #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
     pub enum WitAnimProperty {
         Opacity,
+        TranslateX,
+        TranslateY,
+        Scale,
+        Rotate,
+        StrokeWidth,
+        Color,
     }
 
     /// WIT 循环模式
@@ -63,7 +69,8 @@ pub mod wit_types {
         pub easing: String,
     }
 
-    /// WIT Tier 2 参数动画描述(宿主本地插值)
+    /// WIT Tier 2 参数动画描述(宿主本地插值;canvas@2.0.0 起 color 通道为
+    /// 标量因子模型:0=指令基色 1=alt-color)
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct WitAnimDesc {
         pub property: WitAnimProperty,
@@ -71,14 +78,18 @@ pub mod wit_types {
         pub duration_ms: u32,
         pub delay_ms: u32,
         pub loop_mode: WitLoopMode,
+        /// color 通道专用:因子 0=指令基色 1=alt-color;其余通道忽略
+        pub alt_color: Option<String>,
     }
 
-    /// WIT 字体描述(无损文本样式的可传子集)
+    /// WIT 字体描述(无损文本样式的可传子集;features 为 OpenType 特性通道)
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct WitFontDesc {
         pub family: Option<String>,
         pub weight: Option<u16>,
         pub italic: bool,
+        /// OpenType features("tabular-nums" 等;宿主文本布局消费)
+        pub features: Option<Vec<String>>,
     }
 
     /// WIT 渐变停止点
@@ -105,7 +116,32 @@ pub mod wit_types {
         Gradient(WitLinearGradient),
     }
 
-    /// WIT 绘图指令定义（展平结构，不支持递归类型;v2 无损化）
+    /// WIT `shadow-desc` — 外阴影描述(CSS box-shadow 外阴影子集,宿主 SDF
+    /// 高斯软阴影 pass 渲染)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitShadowDesc {
+        /// x 偏移(px;正值向右)
+        pub offset_x: f64,
+        /// y 偏移(px;正值向下)
+        pub offset_y: f64,
+        /// 模糊半径(px;0 = 硬边)
+        pub blur: f64,
+        /// 扩散(px;正值扩张阴影轮廓,负值收缩)
+        pub spread: f64,
+        /// 阴影基色(hex/rgb/rgba 字符串;透明度以 alpha 字段为准)
+        pub color: String,
+        /// 阴影不透明度(0-1;最终 alpha = color 自身 alpha × alpha)
+        pub alpha: f64,
+        /// 阴影形状宽(px;path 缺省 (0,0) = 包围盒)
+        pub width: f64,
+        /// 阴影形状高(px;语义同 width)
+        pub height: f64,
+        /// 阴影形状旋转角(度;顺时针,绕宿主形状中心)
+        pub rotation: f64,
+    }
+
+    /// WIT 绘图指令定义（展平结构，不支持递归类型;canvas@2.0.0:anims 多轨道 +
+    /// per-corner 圆角 + dash/line-cap + 命令 id）
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct WitDrawCmd {
         pub cmd_type: String,
@@ -114,14 +150,36 @@ pub mod wit_types {
         pub stroke: Option<WitPaint>,
         pub stroke_width: Option<f64>,
         pub corner_radius: Option<f64>,
+        /// per-corner 圆角 (TL, TR, BR, BL);与 corner_radius 同存时优先
+        pub corner_radii: Option<(f64, f64, f64, f64)>,
+        /// 虚线节律(线段/间隙交替,px);缺省或空 = 实线
+        pub dash: Option<Vec<f64>>,
+        /// 线端帽:"butt" | "round" | "square";缺省 butt
+        pub line_cap: Option<String>,
+        /// 外阴影(canvas@2.0.0 shadow-desc;None = 无阴影)
+        #[serde(default)]
+        pub shadow: Option<WitShadowDesc>,
         pub text_content: Option<String>,
         pub font: Option<WitFontDesc>,
         pub group_depth: u32,
-        /// Tier 2 附着(宿主插值,零 wasm 调用)
-        pub anim: Option<WitAnimDesc>,
+        /// 命令身份:所属 hit-region index(一对多;宿主 per-item 效果关联键)
+        pub id: Option<u32>,
+        /// Tier 2 多轨道动画附着(宿主插值,零 wasm 调用)
+        pub anims: Vec<WitAnimDesc>,
     }
 
-    /// WIT 命中区域定义(datum 供宿主 tooltip)
+    /// WIT 声明式 hover 效果(宿主对 draw-cmd.id == region.index 的指令采样渲染)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitHoverEffect {
+        /// "brighten"(params[0]=幅度 0-1)| "scale"(params[0]=倍率增量)
+        /// | "lift"(params[0]=上移 px)| "outline"(params[0]=描边宽)
+        /// | "glow"(params[0]=辉光强度)
+        pub kind: String,
+        /// kind 语义参数;时长固定走宿主 hover 过渡档(150ms)
+        pub params: Vec<f64>,
+    }
+
+    /// WIT 命中区域定义(datum 供宿主 tooltip;hover 为声明式 hover 效果)
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct WitHitRegion {
         pub index: u32,
@@ -131,6 +189,8 @@ pub mod wit_types {
         pub bounds_w: f64,
         pub bounds_h: f64,
         pub datum: Vec<WitFieldValue>,
+        /// 声明式 hover 效果(宿主对 draw-cmd.id == index 的指令采样渲染,零 wasm 调用)
+        pub hover: Option<WitHoverEffect>,
     }
 
     /// WIT 渲染层定义(v2:hit-regions 移出层,不再每层重复)
@@ -165,6 +225,8 @@ pub mod wit_types {
         pub axis: String,
         pub title_color: String,
         pub focus_color: Option<String>,
+        /// hover 提亮语义色(guest set-state 提亮的基准色;缺省用宿主近似)
+        pub hover_color: Option<String>,
         pub font_family: String,
         pub base_font_size: f64,
         pub title_font_size: f64,
@@ -457,7 +519,7 @@ pub mod convert {
         }
     }
 
-    /// TextStyle → WitFontDesc(无损子集)
+    /// TextStyle → WitFontDesc(无损子集;features 通道暂无内部来源,恒 None)
     fn text_style_to_font(style: &deneb_core::TextStyle) -> WitFontDesc {
         let weight = match style.font_weight {
             deneb_core::FontWeight::Normal => None,
@@ -468,6 +530,7 @@ pub mod convert {
             family: Some(style.font_family.clone()),
             weight,
             italic: matches!(style.font_style, deneb_core::FontStyle::Italic),
+            features: None,
         }
     }
 
@@ -482,14 +545,15 @@ pub mod convert {
         }
     }
 
-    /// 内部 DrawCmd 转换为展平的 WIT DrawCmd 列表(v2 无损:圆角/线宽/字体/渐变)
+    /// 内部 DrawCmd 转换为展平的 WIT DrawCmd 列表(canvas@2.0.0:per-corner 圆角/
+    /// dash/line-cap/命令 id 无损传出;anims 由会话层附着,此处恒空)
     ///
     /// `default_stroke_width`:普通 `StrokeStyle::Color` 不携带线宽,描边出现时以
     /// 主题默认线宽传出;`StrokeStyle::WithWidth`(如选中 outline)的显式线宽优先。
     #[allow(clippy::too_many_arguments)]
     pub fn draw_cmd_to_wit_draw_cmd_flat(cmd: DrawCmd, depth: u32, default_stroke_width: f64) -> Vec<WitDrawCmd> {
         match cmd {
-            DrawCmd::Rect { x, y, width, height, fill, stroke, corner_radius } => {
+            DrawCmd::Rect { x, y, width, height, fill, stroke, corner_radius, corner_radii, id } => {
                 let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "rect".to_string(),
@@ -498,13 +562,18 @@ pub mod convert {
                     stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius,
+                    corner_radii,
+                    dash: None,
+                    line_cap: None,
+                    shadow: None,
                     text_content: None,
                     font: None,
                     group_depth: depth,
-                    anim: None,
+                    id,
+                    anims: Vec::new(),
                 }]
             }
-            DrawCmd::Circle { cx, cy, r, fill, stroke } => {
+            DrawCmd::Circle { cx, cy, r, fill, stroke, id } => {
                 let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "circle".to_string(),
@@ -513,13 +582,18 @@ pub mod convert {
                     stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius: None,
+                    corner_radii: None,
+                    dash: None,
+                    line_cap: None,
+                    shadow: None,
                     text_content: None,
                     font: None,
                     group_depth: depth,
-                    anim: None,
+                    id,
+                    anims: Vec::new(),
                 }]
             }
-            DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke } => {
+            DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke, id } => {
                 let (stroke_paint, stroke_w) = stroke_style_to_paint(stroke);
                 vec![WitDrawCmd {
                     cmd_type: "arc".to_string(),
@@ -528,10 +602,15 @@ pub mod convert {
                     stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius: None,
+                    corner_radii: None,
+                    dash: None,
+                    line_cap: None,
+                    shadow: None,
                     text_content: None,
                     font: None,
                     group_depth: depth,
-                    anim: None,
+                    id,
+                    anims: Vec::new(),
                 }]
             }
             DrawCmd::Text { x, y, content, style, anchor, baseline } => {
@@ -554,13 +633,18 @@ pub mod convert {
                     stroke: None,
                     stroke_width: None,
                     corner_radius: None,
+                    corner_radii: None,
+                    dash: None,
+                    line_cap: None,
+                    shadow: None,
                     text_content: Some(content),
                     font: Some(text_style_to_font(&style)),
                     group_depth: depth,
-                    anim: None,
+                    id: None,
+                    anims: Vec::new(),
                 }]
             }
-            DrawCmd::Path { segments, fill, stroke } => {
+            DrawCmd::Path { segments, fill, stroke, dash, line_cap, id } => {
                 // 编码 PathSegment 到 params 数组
                 // 格式：[type_code, ...coords] 逐段拼接
                 // 0=MoveTo(x,y), 1=LineTo(x,y), 2=BezierTo(cp1x,cp1y,cp2x,cp2y,x,y),
@@ -591,10 +675,15 @@ pub mod convert {
                     stroke_width: stroke_w.or_else(|| stroke_paint.is_some().then_some(default_stroke_width)),
                     stroke: stroke_paint,
                     corner_radius: None,
+                    corner_radii: None,
+                    dash,
+                    line_cap,
+                    shadow: None,
                     text_content: None,
                     font: None,
                     group_depth: depth,
-                    anim: None,
+                    id,
+                    anims: Vec::new(),
                 }]
             }
             DrawCmd::Group { label: _, items } => {
@@ -618,7 +707,8 @@ pub mod convert {
         }
     }
 
-    /// 内部 HitRegion 转换为 WIT HitRegion(datum 数据随行传出,供宿主 tooltip)
+    /// 内部 HitRegion 转换为 WIT HitRegion(datum 数据随行传出,供宿主 tooltip;
+    /// hover 声明式效果随行传出,宿主对 draw-cmd.id == index 的指令采样渲染)
     pub fn hit_region_to_wit_hit_region(region: HitRegion) -> WitHitRegion {
         WitHitRegion {
             index: region.index as u32,
@@ -628,6 +718,10 @@ pub mod convert {
             bounds_w: region.bounds.width,
             bounds_h: region.bounds.height,
             datum: region.data.iter().map(|v| field_value_to_wit_field_value(v.clone())).collect(),
+            hover: region.hover.map(|h| WitHoverEffect {
+                kind: h.kind,
+                params: h.params,
+            }),
         }
     }
 

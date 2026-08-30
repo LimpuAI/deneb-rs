@@ -220,14 +220,17 @@ impl HeatmapChart {
         Ok((x_scale, y_scale, color_scale))
     }
 
-    /// 将归一化值映射为颜色字符串
-    fn color_for_value(t: f64) -> String {
+    /// 将归一化值映射为颜色字符串(T27:锚点由 theme 派生,去硬编码 RdBu)
+    ///
+    /// 锚点序 = 低/error → 中/background → 高/success(发散语义:
+    /// 低值冷、高值暖,色彩随宿主 tokens 的 Light/Dark 模式联动)
+    fn color_for_value_anchors(t: f64, lo: &str, mid: &str, hi: &str) -> String {
         let t = t.clamp(0.0, 1.0);
-        // 色阶: "#313695" (低, 蓝) → "#f7f7f7" (中) → "#a50026" (高, 红)
+        let (r0, g0, b0) = parse_hex_rgb(lo);
+        let (r1, g1, b1) = parse_hex_rgb(mid);
+        let (r2, g2, b2) = parse_hex_rgb(hi);
         let (r, g, b) = if t <= 0.5 {
             let s = t / 0.5;
-            let (r0, g0, b0) = (0x31, 0x36, 0x95);
-            let (r1, g1, b1) = (0xf7, 0xf7, 0xf7);
             (
                 (r0 as f64 + (r1 as f64 - r0 as f64) * s) as u8,
                 (g0 as f64 + (g1 as f64 - g0 as f64) * s) as u8,
@@ -235,15 +238,24 @@ impl HeatmapChart {
             )
         } else {
             let s = (t - 0.5) / 0.5;
-            let (r0, g0, b0) = (0xf7, 0xf7, 0xf7);
-            let (r1, g1, b1) = (0xa5, 0x00, 0x26);
             (
-                (r0 as f64 + (r1 as f64 - r0 as f64) * s) as u8,
-                (g0 as f64 + (g1 as f64 - g0 as f64) * s) as u8,
-                (b0 as f64 + (b1 as f64 - b0 as f64) * s) as u8,
+                (r1 as f64 + (r2 as f64 - r1 as f64) * s) as u8,
+                (g1 as f64 + (g2 as f64 - g1 as f64) * s) as u8,
+                (b1 as f64 + (b2 as f64 - b1 as f64) * s) as u8,
             )
         };
         format!("#{:02x}{:02x}{:02x}", r, g, b)
+    }
+
+    /// 兼容保留:默认锚点(无 theme 上下文的旧调用路径)
+    fn color_for_value(t: f64) -> String {
+        Self::color_for_value_anchors(t, "#313695", "#f7f7f7", "#a50026")
+    }
+
+    /// theme 锚点版调用(T27 主路径)
+    fn color_for_value_with_theme<T: Theme>(t: f64, theme: &T) -> String {
+        let (lo, mid, hi) = theme.diverging_anchors();
+        Self::color_for_value_anchors(t, &lo, &mid, &hi)
     }
 
     /// 渲染热力图单元格
@@ -287,7 +299,7 @@ impl HeatmapChart {
             let band_width_y = y_scale.band_width();
 
             let t = color_scale.map(color_val);
-            let color = Self::color_for_value(t);
+            let color = Self::color_for_value_with_theme(t, _theme);
 
             output.add_command(DrawCmd::Rect {
                 x: band_start_x,
@@ -295,9 +307,11 @@ impl HeatmapChart {
                 width: band_width_x,
                 height: band_width_y,
                 fill: Some(FillStyle::Color(color)),
-                stroke: Some(StrokeStyle::Color("#ffffff".to_string())),
+                stroke: Some(StrokeStyle::Color(_theme.background_color().to_string())),
                 corner_radius: None,
-            });
+                corner_radii: None,
+                id: Some(row_idx as u32),
+});
 
             // 收集该行所有字段值
             let mut row_data = Vec::new();
@@ -315,7 +329,8 @@ impl HeatmapChart {
                 row_idx,
                 None,
                 row_data,
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
         }
 
@@ -342,7 +357,10 @@ impl HeatmapChart {
                 ],
                 fill: None,
                 stroke: Some(theme.axis_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             // X 轴标签：在每个 band 中心
             let tick_size = theme.layout_config().tick_length;
@@ -366,7 +384,10 @@ impl HeatmapChart {
                         ],
                         fill: None,
                         stroke: Some(theme.axis_stroke()),
-                    });
+                        dash: None,
+                        line_cap: None,
+                        id: None,
+});
 
                     output.add_command(DrawCmd::Text {
                         x: tick_pos,
@@ -406,7 +427,10 @@ impl HeatmapChart {
                 ],
                 fill: None,
                 stroke: Some(theme.axis_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             let tick_size = theme.layout_config().tick_length;
             let text_style = TextStyle::new()
@@ -422,7 +446,10 @@ impl HeatmapChart {
                     ],
                     fill: None,
                     stroke: Some(theme.axis_stroke()),
-                });
+                    dash: None,
+                    line_cap: None,
+                    id: None,
+});
 
                 output.add_command(DrawCmd::Text {
                     x: y_axis.position - tick_size - 5.0,
@@ -477,11 +504,15 @@ impl HeatmapChart {
                 x1: bar_x,
                 y1: bar_y,
             },
-            stops: vec![
-                GradientStop::new(0.0, "#313695".to_string()),
-                GradientStop::new(0.5, "#f7f7f7".to_string()),
-                GradientStop::new(1.0, "#a50026".to_string()),
-            ],
+            stops: {
+                // 发散色标三锚点(T27:theme 派生 — error → background → success)
+                let (lo, mid, hi) = theme.diverging_anchors();
+                vec![
+                    GradientStop::new(0.0, lo),
+                    GradientStop::new(0.5, mid),
+                    GradientStop::new(1.0, hi),
+                ]
+            },
         };
 
         output.add_command(DrawCmd::Rect {
@@ -492,7 +523,9 @@ impl HeatmapChart {
             fill: Some(FillStyle::Gradient(gradient)),
             stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
             corner_radius: None,
-        });
+            corner_radii: None,
+            id: None,
+});
 
         // 色标刻度标签
         let (domain_min, domain_max) = color_scale.domain();
@@ -515,7 +548,10 @@ impl HeatmapChart {
                 ],
                 fill: None,
                 stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             // 标签
             let label = if value.fract() == 0.0 && value.abs() < 1e10 {
@@ -794,5 +830,23 @@ mod tests {
         assert!(result.is_ok());
         let output = result.unwrap();
         assert_eq!(output.hit_regions.len(), 2);
+    }
+}
+
+/// CSS hex("#rrggbb"/"#rgb")→ (r, g, b) u8;解析失败回退中灰(可视化温和降级)
+fn parse_hex_rgb(css: &str) -> (u8, u8, u8) {
+    let h = css.trim().strip_prefix('#').unwrap_or(css.trim());
+    match h.len() {
+        3 => (
+            u8::from_str_radix(&h[0..1].repeat(2), 16).unwrap_or(0x80),
+            u8::from_str_radix(&h[1..2].repeat(2), 16).unwrap_or(0x80),
+            u8::from_str_radix(&h[2..3].repeat(2), 16).unwrap_or(0x80),
+        ),
+        6 => (
+            u8::from_str_radix(&h[0..2], 16).unwrap_or(0x80),
+            u8::from_str_radix(&h[2..4], 16).unwrap_or(0x80),
+            u8::from_str_radix(&h[4..6], 16).unwrap_or(0x80),
+        ),
+        _ => (0x80, 0x80, 0x80),
     }
 }

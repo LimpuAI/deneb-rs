@@ -5,6 +5,9 @@
 /// Shared rendering helpers
 pub mod shared;
 
+/// mark 级 Tier 1 动画(MarkAnim 的 15 种 mark 实现 + Mark 分发)
+pub mod mark_anim;
+
 pub mod line;
 pub mod bar;
 
