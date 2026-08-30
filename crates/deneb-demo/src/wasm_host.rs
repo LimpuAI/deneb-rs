@@ -374,10 +374,25 @@ fn bg_to_wit_draw_cmd(c: BgDrawCmd) -> WitDrawCmd {
         stroke: bg_to_wit_paint(c.stroke),
         stroke_width: c.stroke_width,
         corner_radius: c.corner_radius,
+        corner_radii: None,
+        dash: None,
+        line_cap: None,
+        shadow: c.shadow.map(|s| WitShadowDesc {
+            offset_x: s.offset_x,
+            offset_y: s.offset_y,
+            blur: s.blur,
+            spread: s.spread,
+            color: s.color,
+            alpha: s.alpha,
+            width: s.width,
+            height: s.height,
+            rotation: s.rotation,
+        }),
         text_content: c.text_content,
-        font: c.font.map(|f| WitFontDesc { family: f.family, weight: f.weight, italic: f.italic }),
+        font: c.font.map(|f| WitFontDesc { family: f.family, weight: f.weight, italic: f.italic, features: f.features }),
         group_depth: c.group_depth,
-        anim: None, // demo 渲染不消费 Tier 2(宿主 echodawn 侧消费)
+        id: None,
+        anims: Vec::new(), // demo 渲染不消费 Tier 2(宿主 echodawn 侧消费)
     }
 }
 
@@ -390,6 +405,7 @@ fn bg_to_wit_hit_region(r: BgHitRegion) -> WitHitRegion {
         bounds_w: r.bounds_w,
         bounds_h: r.bounds_h,
         datum: r.datum.into_iter().map(bg_to_wit_field_value).collect(),
+        hover: None,
     }
 }
 

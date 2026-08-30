@@ -64,7 +64,9 @@ fn main() {
         fill: Some(FillStyle::Color("#f8f9fa".to_string())),
         stroke: None,
         corner_radius: None,
-    });
+        corner_radii: None,
+        id: None,
+});
 
     // 为每个类别绘制柱子
     for (_i, row) in (0..table.row_count()).enumerate() {
@@ -90,7 +92,9 @@ fn main() {
                 fill: Some(FillStyle::Color("#4c8bf5".to_string())),
                 stroke: Some(StrokeStyle::Color("#2c5bb5".to_string())),
                 corner_radius: Some(4.0),
-            });
+                corner_radii: None,
+                id: None,
+});
         }
     }
 

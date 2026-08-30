@@ -11,6 +11,10 @@ static GRADIENT_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// 绘图指令
 ///
 /// 语义化的绘图指令，表示要绘制的内容。
+///
+/// canvas@2.0.0 对齐:`id` 为命令身份(所属 hit-region index,一对多),
+/// `corner_radii` 为 per-corner 圆角(TL/TR/BR/Bl,与 `corner_radius` 同存时优先),
+/// `dash`/`line_cap` 为线型词汇(虚线节律 + 端帽)。
 #[derive(Clone, Debug, PartialEq)]
 pub enum DrawCmd {
     /// 矩形
@@ -27,8 +31,12 @@ pub enum DrawCmd {
         fill: Option<FillStyle>,
         /// 描边样式
         stroke: Option<StrokeStyle>,
-        /// 圆角半径
+        /// 圆角半径(统一四角)
         corner_radius: Option<f64>,
+        /// per-corner 圆角 (TL, TR, BR, BL);与 corner_radius 同存时优先
+        corner_radii: Option<(f64, f64, f64, f64)>,
+        /// 命令身份:所属 hit-region index(宿主 per-item 效果关联键)
+        id: Option<u32>,
     },
     /// 路径
     Path {
@@ -38,6 +46,12 @@ pub enum DrawCmd {
         fill: Option<FillStyle>,
         /// 描边样式
         stroke: Option<StrokeStyle>,
+        /// 虚线节律(线段/间隙交替,px);缺省或空 = 实线
+        dash: Option<Vec<f64>>,
+        /// 线端帽:"butt" | "round" | "square";缺省 butt
+        line_cap: Option<String>,
+        /// 命令身份:所属 hit-region index
+        id: Option<u32>,
     },
     /// 圆形
     Circle {
@@ -51,6 +65,8 @@ pub enum DrawCmd {
         fill: Option<FillStyle>,
         /// 描边样式
         stroke: Option<StrokeStyle>,
+        /// 命令身份:所属 hit-region index
+        id: Option<u32>,
     },
     /// 扇形/弧形
     Arc {
@@ -68,6 +84,8 @@ pub enum DrawCmd {
         fill: Option<FillStyle>,
         /// 描边样式
         stroke: Option<StrokeStyle>,
+        /// 命令身份:所属 hit-region index
+        id: Option<u32>,
     },
     /// 文本
     Text {
@@ -105,10 +123,17 @@ impl DrawCmd {
                 fill,
                 stroke,
                 corner_radius,
+                corner_radii,
+                id: _,
             } => {
                 let mut ops = Vec::new();
 
-                if let Some(radius) = corner_radius {
+                // per-corner 优先于统一圆角(canvas@2.0.0 语义)
+                if let Some((tl, tr, br, bl)) = corner_radii {
+                    ops.extend(Self::per_corner_rect_path(
+                        *x, *y, *width, *height, (*tl, *tr, *br, *bl), fill, stroke,
+                    ));
+                } else if let Some(radius) = corner_radius {
                     // 圆角矩形需要用路径绘制
                     ops.extend(Self::rounded_rect_path(*x, *y, *width, *height, *radius, fill, stroke));
                 } else {
@@ -146,6 +171,9 @@ impl DrawCmd {
                 segments,
                 fill,
                 stroke,
+                dash,
+                line_cap,
+                id: _,
             } => {
                 let mut ops = Vec::new();
 
@@ -159,6 +187,18 @@ impl DrawCmd {
                     ops.extend(segment.to_canvas_ops());
                 }
 
+                // 线型词汇:虚线节律 + 端帽(仅在描边存在时有意义)
+                if stroke.is_some() {
+                    if let Some(dashes) = dash {
+                        if !dashes.is_empty() {
+                            ops.push(CanvasOp::SetLineDash(dashes.clone()));
+                        }
+                    }
+                    if let Some(cap) = line_cap {
+                        ops.push(CanvasOp::SetLineCap(cap.clone()));
+                    }
+                }
+
                 ops.extend(Self::apply_fill(fill));
                 ops.extend(Self::apply_stroke(stroke));
 
@@ -170,6 +210,7 @@ impl DrawCmd {
                 r,
                 fill,
                 stroke,
+                id: _,
             } => {
                 let mut ops = Vec::new();
 
@@ -189,6 +230,7 @@ impl DrawCmd {
                 end_angle,
                 fill,
                 stroke,
+                id: _,
             } => {
                 let mut ops = Vec::new();
 
@@ -271,24 +313,50 @@ impl DrawCmd {
         fill: &Option<FillStyle>,
         stroke: &Option<StrokeStyle>,
     ) -> Vec<CanvasOp> {
-        let mut ops = Vec::new();
         let r = radius.min(width / 2.0).min(height / 2.0);
+        Self::per_corner_rect_path(x, y, width, height, (r, r, r, r), fill, stroke)
+    }
+
+    /// 辅助方法：生成 per-corner 圆角矩形路径(TL, TR, BR, BL)
+    ///
+    /// 典型用途:柱状族"顶边柱"(正柱仅顶两角圆角,负柱仅底两角)。各角半径
+    /// 独立 clamp 到所在边长一半,避免相邻角重叠导致的路径自交。
+    fn per_corner_rect_path(
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        radii: (f64, f64, f64, f64),
+        fill: &Option<FillStyle>,
+        stroke: &Option<StrokeStyle>,
+    ) -> Vec<CanvasOp> {
+        let mut ops = Vec::new();
+        let half_w = width / 2.0;
+        let half_h = height / 2.0;
+        let (tl, tr, br, bl) = radii;
+        let tl = tl.clamp(0.0, half_w.min(half_h));
+        let tr = tr.clamp(0.0, half_w.min(half_h));
+        let br = br.clamp(0.0, half_w.min(half_h));
+        let bl = bl.clamp(0.0, half_w.min(half_h));
 
         ops.push(CanvasOp::BeginPath);
-        ops.push(CanvasOp::MoveTo(x + r, y));
-        ops.push(CanvasOp::LineTo(x + width - r, y));
-        ops.push(CanvasOp::QuadraticCurveTo(x + width, y, x + width, y + r));
-        ops.push(CanvasOp::LineTo(x + width, y + height - r));
-        ops.push(CanvasOp::QuadraticCurveTo(
-            x + width,
-            y + height,
-            x + width - r,
-            y + height,
-        ));
-        ops.push(CanvasOp::LineTo(x + r, y + height));
-        ops.push(CanvasOp::QuadraticCurveTo(x, y + height, x, y + height - r));
-        ops.push(CanvasOp::LineTo(x, y + r));
-        ops.push(CanvasOp::QuadraticCurveTo(x, y, x + r, y));
+        ops.push(CanvasOp::MoveTo(x + tl, y));
+        ops.push(CanvasOp::LineTo(x + width - tr, y));
+        if tr > 0.0 {
+            ops.push(CanvasOp::QuadraticCurveTo(x + width, y, x + width, y + tr));
+        }
+        ops.push(CanvasOp::LineTo(x + width, y + height - br));
+        if br > 0.0 {
+            ops.push(CanvasOp::QuadraticCurveTo(x + width, y + height, x + width - br, y + height));
+        }
+        ops.push(CanvasOp::LineTo(x + bl, y + height));
+        if bl > 0.0 {
+            ops.push(CanvasOp::QuadraticCurveTo(x, y + height, x, y + height - bl));
+        }
+        ops.push(CanvasOp::LineTo(x, y + tl));
+        if tl > 0.0 {
+            ops.push(CanvasOp::QuadraticCurveTo(x, y, x + tl, y));
+        }
         ops.push(CanvasOp::ClosePath);
 
         ops.extend(Self::apply_fill(fill));
@@ -408,6 +476,10 @@ pub enum CanvasOp {
     SetStrokeStyle(String),
     /// 设置线宽
     SetLineWidth(f64),
+    /// 设置虚线节律(线段/间隙交替,px;空数组 = 复位实线)
+    SetLineDash(Vec<f64>),
+    /// 设置线端帽:"butt" | "round" | "square"
+    SetLineCap(String),
     /// 设置字体
     SetFont(String),
     /// 设置文本对齐
@@ -582,6 +654,8 @@ mod tests {
             fill: Some(FillStyle::Color("#ff0000".to_string())),
             stroke: Some(StrokeStyle::Color("#000000".to_string())),
             corner_radius: None,
+            corner_radii: None,
+            id: None,
         };
 
         let ops = rect.to_canvas_ops();
@@ -600,6 +674,7 @@ mod tests {
             r: 25.0,
             fill: Some(FillStyle::Color("#0000ff".to_string())),
             stroke: None,
+            id: None,
         };
 
         let ops = circle.to_canvas_ops();
@@ -655,6 +730,8 @@ mod tests {
             fill: Some(FillStyle::Color("#fff".to_string())),
             stroke: None,
             corner_radius: None,
+            corner_radii: None,
+            id: None,
         });
 
         assert!(!output.is_empty());
@@ -674,6 +751,7 @@ mod tests {
                 r: 5.0,
                 fill: None,
                 stroke: None,
+                id: None,
             },
             DrawCmd::Circle {
                 cx: 10.0,
@@ -681,6 +759,7 @@ mod tests {
                 r: 5.0,
                 fill: None,
                 stroke: None,
+                id: None,
             },
         ];
 
@@ -703,6 +782,8 @@ mod tests {
                     fill: None,
                     stroke: None,
                     corner_radius: None,
+                    corner_radii: None,
+                    id: None,
                 },
             ],
         };
@@ -723,6 +804,8 @@ mod tests {
             fill: Some(FillStyle::Color("#fff".to_string())),
             stroke: None,
             corner_radius: Some(10.0),
+            corner_radii: None,
+            id: None,
         };
 
         let ops = rect.to_canvas_ops();

@@ -140,13 +140,22 @@ impl TinySkiaRenderer {
             DrawCmd::Rect {
                 x, y, width, height,
                 fill, stroke, corner_radius,
+                corner_radii, ..
             } => {
-                self.draw_rect(*x, *y, *width, *height, fill, stroke, corner_radius);
+                // per-corner 优先(canvas@2.0.0);原生预览路径折叠为等效统一半径
+                let unified = corner_radii.map(|(tl, tr, br, bl)| {
+                    let radii = [tl, tr, br, bl];
+                    let nonzero = radii.iter().filter(|&&r| r > 0.0).count();
+                    if nonzero == 0 { 0.0 } else {
+                        radii.iter().filter(|&&r| r > 0.0).sum::<f64>() / nonzero as f64
+                    }
+                }).or(*corner_radius);
+                self.draw_rect(*x, *y, *width, *height, fill, stroke, &unified);
             }
-            DrawCmd::Path { segments, fill, stroke } => {
+            DrawCmd::Path { segments, fill, stroke, .. } => {
                 self.draw_path(segments, fill, stroke);
             }
-            DrawCmd::Circle { cx, cy, r, fill, stroke } => {
+            DrawCmd::Circle { cx, cy, r, fill, stroke, .. } => {
                 self.draw_circle(*cx, *cy, *r, fill, stroke);
             }
             DrawCmd::Text { x, y, content, style, anchor, baseline } => {
@@ -157,7 +166,7 @@ impl TinySkiaRenderer {
                     self.render_cmd(item);
                 }
             }
-            DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke } => {
+            DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke, .. } => {
                 self.draw_arc(*cx, *cy, *r, *start_angle, *end_angle, fill, stroke);
             }
         }
@@ -504,7 +513,9 @@ mod tests {
             fill: Some(FillStyle::Color("#ff0000".to_string())),
             stroke: None,
             corner_radius: None,
-        });
+            corner_radii: None,
+            id: None,
+});
 
         let pixel = renderer.pixmap.pixel(30, 30).unwrap();
         assert!(pixel.red() > 200);
@@ -519,7 +530,9 @@ mod tests {
             fill: None,
             stroke: Some(StrokeStyle::Color("#0000ff".to_string())),
             corner_radius: None,
-        });
+            corner_radii: None,
+            id: None,
+});
 
         // 描边矩形应该不 panic，且画布上应有一些非零像素
         let has_pixels = renderer.pixmap.pixels()
@@ -536,7 +549,8 @@ mod tests {
             cx: 50.0, cy: 50.0, r: 20.0,
             fill: Some(FillStyle::Color("#00ff00".to_string())),
             stroke: None,
-        });
+            id: None,
+});
 
         let pixel = renderer.pixmap.pixel(50, 50).unwrap();
         assert!(pixel.green() > 200);
@@ -553,7 +567,10 @@ mod tests {
             ],
             fill: None,
             stroke: Some(StrokeStyle::Color("#000000".to_string())),
-        });
+            dash: None,
+            line_cap: None,
+            id: None,
+});
 
         // 线段上应该有黑色像素
         let pixel = renderer.pixmap.pixel(50, 10).unwrap();
@@ -573,13 +590,17 @@ mod tests {
                     fill: Some(FillStyle::Color("#ff0000".to_string())),
                     stroke: None,
                     corner_radius: None,
-                },
+                    corner_radii: None,
+                    id: None,
+},
                 DrawCmd::Rect {
                     x: 50.0, y: 50.0, width: 50.0, height: 50.0,
                     fill: Some(FillStyle::Color("#0000ff".to_string())),
                     stroke: None,
                     corner_radius: None,
-                },
+                    corner_radii: None,
+                    id: None,
+},
             ],
         });
 

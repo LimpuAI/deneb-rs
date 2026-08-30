@@ -312,7 +312,8 @@ impl StripChart {
                     r: point_radius,
                     fill: Some(FillStyle::Color(color.clone())),
                     stroke: None,
-                });
+                    id: Some(*row_idx as u32),
+});
 
                 let region = HitRegion::from_point(
                     cx,
@@ -321,7 +322,8 @@ impl StripChart {
                     *row_idx,
                     if groups.len() > 1 { Some(group_idx) } else { None },
                     row_data.clone(),
-                );
+                )
+                .with_hover(HoverEffect::brighten(0.08));
                 hit_regions.push(region);
             }
         }

@@ -159,6 +159,22 @@ impl AreaChart {
             layers.update_layer(LayerKind::Title, super::shared::render_title(theme, title, &layout.plot_area));
         }
 
+        // Legend 层(多系列;T26)— 标签来自 color encoding 分组键
+        if stacked_series.len() >= 2 {
+            let labels: Vec<String> = series
+                .iter()
+                .map(|(k, _)| k.clone().unwrap_or_default())
+                .take(stacked_series.len())
+                .collect();
+            let colors: Vec<String> = (0..stacked_series.len())
+                .map(|i| palette.get(i % palette.len()).unwrap_or(&palette[0]).clone())
+                .collect();
+            layers.update_layer(
+                LayerKind::Legend,
+                super::shared::render_legend(theme, &labels, &colors, &layout.plot_area),
+            );
+        }
+
         Ok(ChartOutput {
             layers,
             hit_regions: all_hit_regions,
@@ -450,7 +466,10 @@ impl AreaChart {
                 segments: Vec::new(),
                 fill: None,
                 stroke: None,
-            };
+                dash: None,
+                line_cap: None,
+                id: None,
+};
         }
 
         if points.len() == 1 {
@@ -465,7 +484,9 @@ impl AreaChart {
                 fill: Some(FillStyle::Color(color.to_string())),
                 stroke: None,
                 corner_radius: None,
-            };
+                corner_radii: None,
+                id: None,
+};
         }
 
         // 生成面积路径：上边界（数据点）→ 右下角基线 → 左下角基线 → 闭合
@@ -495,7 +516,10 @@ impl AreaChart {
             segments,
             fill: Some(FillStyle::Color(fill_color)),
             stroke: Some(StrokeStyle::Color(color.to_string())),
-        }
+            dash: None,
+            line_cap: None,
+            id: None,
+}
     }
 
     /// 为颜色添加 alpha 通道
@@ -542,7 +566,8 @@ impl AreaChart {
                 row_idx,
                 Some(series_idx),
                 row_data,
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             regions.push(region);
         }
 

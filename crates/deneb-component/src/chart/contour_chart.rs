@@ -359,7 +359,10 @@ impl ContourChart {
                     segments,
                     fill,
                     stroke: Some(StrokeStyle::Color(color.to_string())),
-                });
+                    dash: None,
+                    line_cap: None,
+                    id: None,
+});
             }
         }
 
@@ -410,7 +413,8 @@ impl ContourChart {
                     r: point_radius,
                     fill: Some(FillStyle::Color(theme.series_color(0).to_string())),
                     stroke: None,
-                });
+                    id: Some(idx as u32),
+});
 
                 let region = HitRegion::from_rect(
                     sx - point_radius,
@@ -420,7 +424,8 @@ impl ContourChart {
                     idx,
                     None,
                     vec![FieldValue::Numeric(*py)],
-                );
+                )
+                .with_hover(HoverEffect::brighten(0.08));
                 hit_regions.push(region);
             }
         }

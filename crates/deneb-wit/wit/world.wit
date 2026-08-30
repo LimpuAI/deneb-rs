@@ -1,9 +1,16 @@
-/// deneb-viz WIT world definition (v3 — shared drawing vocabulary)
+/// deneb-viz WIT world definition (v4 — shared drawing vocabulary)
+///
+/// v4 变更(相对 v3,canvas@2.0.0 窗口):
+/// - 绘制词汇表升级至 `echodawn:canvas@2.0.0/draw`(Tier2 七通道/多轨道/
+///   dash/line-cap/per-corner/font features/命令 id/hover-effect)
+/// - hit-region 增 `hover: option<hover-effect>`(声明式 hover,宿主渲染)
+/// - theme 增 `hover-color`(guest 侧 hover 提亮的语义色通道,取代宿主
+///   lighten(0.08) 近似)
+/// - 会话形状不变:constructor + 六方法零增删
 ///
 /// v3 变更(相对 v2):
-/// - chart-renderer 的绘制词汇表(anim-*/font-desc/paint/gradient-*/draw-cmd/layer)
-///   替换为 `use echodawn:canvas/draw` 共享词汇表(vendored 副本 wit/deps/echodawn-canvas/)
-///   —— 纯文本重组织,零语义变化(字段逐项一致)
+/// - 绘制词汇表(anim-*/font-desc/paint/gradient-*/draw-cmd/layer)抽取至共享包
+///   `echodawn:canvas@1.0.0/draw`,本接口以 `use` 引回 —— 纯文本重组织,字段逐项一致
 ///
 /// v2 变更(相对 v1):
 /// - `chart` resource:有状态会话(constructor/update-data/resize/set-state/set-theme/render(t)/hit-regions)
@@ -12,7 +19,7 @@
 /// - hit-region 附带 datum 数据(tooltip);hit-regions 移出 layer(v1 每层重复的修复)
 /// - theme record 注入(修复 v1 spec.theme 被忽略、wasm 路径硬编码 DefaultTheme)
 /// - 移除自由函数 render/hit-test(resource 方法取代;宿主侧 AABB 命中)
-package deneb:viz;
+package deneb:viz@4.0.0;
 
 interface data-parser {
     record schema-field {
@@ -41,7 +48,8 @@ interface data-parser {
 
 interface chart-renderer {
     use data-parser.{field-value};
-    use echodawn:canvas/draw@1.0.0.{anim-property, loop-mode, keyframe, anim-desc, font-desc, gradient-stop, linear-gradient, paint, draw-cmd, layer};
+    // 共享绘制词汇表 —— v4 起自 echodawn:canvas/draw@2.0.0 引回(定义归 echodawn 持有,双侧同步)
+    use echodawn:canvas/draw@2.0.0.{anim-property, loop-mode, keyframe, anim-desc, font-desc, gradient-stop, linear-gradient, paint, draw-cmd, layer, hover-effect};
 
     // ---- 命中区(宿主侧 AABB,datum 供 tooltip) ----
 
@@ -53,6 +61,8 @@ interface chart-renderer {
         bounds-w: f64,
         bounds-h: f64,
         datum: list<field-value>,
+        /// 声明式 hover 效果(宿主对 draw-cmd.id == index 的指令采样渲染,零 wasm 调用)
+        hover: option<hover-effect>,
     }
 
     record render-result {
@@ -84,6 +94,8 @@ interface chart-renderer {
         title-color: string,
         /// 选中项 outline 色(宿主 input_border_focus token;缺省用 foreground)
         focus-color: option<string>,
+        /// hover 提亮语义色(guest set-state 提亮的基准色;缺省用宿主近似)
+        hover-color: option<string>,
         font-family: string,
         base-font-size: f64,
         title-font-size: f64,

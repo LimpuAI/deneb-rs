@@ -217,7 +217,7 @@ impl PieChart {
 
             let color = theme.series_color(idx).to_string();
 
-            // 绘制扇形
+            // 绘制扇形(id = 命中区索引;分隔线取主题背景色 — 语义色去硬编码)
             output.add_command(DrawCmd::Arc {
                 cx,
                 cy,
@@ -225,8 +225,9 @@ impl PieChart {
                 start_angle: current_angle,
                 end_angle,
                 fill: Some(FillStyle::Color(color)),
-                stroke: Some(StrokeStyle::Color("#ffffff".to_string())),
-            });
+                stroke: Some(StrokeStyle::Color(theme.background_color().to_string())),
+                id: Some(slice.row_idx as u32),
+});
 
             // 计算标签位置（扇形中点角度方向）
             let mid_angle = current_angle + slice_angle / 2.0;
@@ -256,7 +257,7 @@ impl PieChart {
                 baseline: TextBaseline::Middle,
             });
 
-            // HitRegion：用包围盒覆盖扇形区域
+            // HitRegion：用包围盒覆盖扇形区域(声明式 hover:扇形放大 2%)
             let region = HitRegion::from_rect(
                 cx - radius,
                 cy - radius,
@@ -265,7 +266,8 @@ impl PieChart {
                 slice.row_idx,
                 Some(idx),
                 Self::collect_row_data(data, slice.row_idx),
-            );
+            )
+            .with_hover(HoverEffect::scale(0.02));
             hit_regions.push(region);
 
             current_angle = end_angle;

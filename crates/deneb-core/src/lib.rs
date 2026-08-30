@@ -36,7 +36,7 @@ pub use scale::{Scale, ScaleDomain, ScaleRange, LinearScale, LogScale, TimeScale
 pub use error::{CoreError, DataFormat};
 pub use parser::*;
 pub use algorithm::*;
-pub use interaction::{HitRegion, BoundingBox, HitResult};
+pub use interaction::{HitRegion, BoundingBox, HitResult, HoverEffect};
 pub use interaction::{CoordLookup, SimpleLookup};
-pub use anim::{Easing, InteractionState, ChartAnim, lerp};
-pub use color::{Rgba, with_alpha, lighten};
+pub use anim::{Easing, InteractionState, ChartAnim, MarkAnim, brighten_fill, alpha_fill, lerp};
+pub use color::{Rgba, with_alpha, lighten, mix_toward};

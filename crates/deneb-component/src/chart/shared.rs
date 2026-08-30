@@ -21,7 +21,9 @@ pub fn render_background<T: Theme>(spec: &ChartSpec, theme: &T) -> RenderOutput 
         fill: Some(FillStyle::Color(theme.background_color().to_string())),
         stroke: None,
         corner_radius: None,
-    }])
+        corner_radii: None,
+        id: None,
+}])
 }
 
 /// Render chart background with plot area border.
@@ -44,7 +46,9 @@ pub fn render_background_with_border<T: Theme>(
         fill: Some(FillStyle::Color(theme.background_color().to_string())),
         stroke: None,
         corner_radius: None,
-    });
+        corner_radii: None,
+        id: None,
+});
 
     // Plot area border
     output.add_command(DrawCmd::Rect {
@@ -55,7 +59,9 @@ pub fn render_background_with_border<T: Theme>(
         fill: None,
         stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
         corner_radius: None,
-    });
+        corner_radii: None,
+        id: None,
+});
 
     output
 }
@@ -78,7 +84,10 @@ pub fn render_grid_horizontal<T: Theme>(
             ],
             fill: None,
             stroke: Some(theme.grid_stroke()),
-        });
+            dash: None,
+            line_cap: None,
+            id: None,
+});
     }
 
     output
@@ -109,7 +118,10 @@ pub fn render_cartesian_grid_and_axes<T: Theme>(
                 ],
                 fill: None,
                 stroke: Some(theme.grid_stroke().clone()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
         }
 
         // Axis line
@@ -123,7 +135,10 @@ pub fn render_cartesian_grid_and_axes<T: Theme>(
             ],
             fill: None,
             stroke: Some(theme.axis_stroke().clone()),
-        });
+            dash: None,
+            line_cap: None,
+            id: None,
+});
 
         // Tick labels (no tick marks)
         let tick_size = theme.layout_config().tick_length;
@@ -155,7 +170,10 @@ pub fn render_cartesian_grid_and_axes<T: Theme>(
                 ],
                 fill: None,
                 stroke: Some(theme.grid_stroke().clone()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
         }
 
         // Axis line
@@ -169,7 +187,10 @@ pub fn render_cartesian_grid_and_axes<T: Theme>(
             ],
             fill: None,
             stroke: Some(theme.axis_stroke().clone()),
-        });
+            dash: None,
+            line_cap: None,
+            id: None,
+});
 
         // Tick labels (no tick marks)
         let tick_size = theme.layout_config().tick_length;
@@ -220,7 +241,10 @@ pub fn render_axes<T: Theme>(
             ],
             fill: None,
             stroke: Some(theme.axis_stroke()),
-        });
+            dash: None,
+            line_cap: None,
+            id: None,
+});
 
         // Tick marks and labels
         let tick_size = theme.layout_config().tick_length;
@@ -233,7 +257,10 @@ pub fn render_axes<T: Theme>(
                 ],
                 fill: None,
                 stroke: Some(theme.axis_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             // Tick label
             let text_style = TextStyle::new()
@@ -280,7 +307,10 @@ pub fn render_axes<T: Theme>(
             ],
             fill: None,
             stroke: Some(theme.axis_stroke()),
-        });
+            dash: None,
+            line_cap: None,
+            id: None,
+});
 
         // Tick marks and labels
         let tick_size = theme.layout_config().tick_length;
@@ -293,7 +323,10 @@ pub fn render_axes<T: Theme>(
                 ],
                 fill: None,
                 stroke: Some(theme.axis_stroke()),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
 
             // Tick label
             let text_style = TextStyle::new()
@@ -363,5 +396,61 @@ pub fn render_title<T: Theme>(theme: &T, title: &str, plot_area: &PlotArea) -> R
         baseline: TextBaseline::Bottom,
     });
 
+    output
+}
+
+/// 多系列图例层(T26)— 色块 + 标签横排,绘制区上方右侧(label 字号档)。
+///
+/// 仅在系列数 ≥ 2 时由各 mark 调用(单系列图例是噪音);条目宽度按
+/// 8px 色块 + 6px 间隙 + 标签字符宽(label_font_size × 0.6 近似)估算,
+/// 超出绘图宽度时截断条目(不换行 — 图表图例惯例)。
+pub fn render_legend<T: Theme>(
+    theme: &T,
+    labels: &[String],
+    colors: &[String],
+    plot_area: &PlotArea,
+) -> RenderOutput {
+    let mut output = RenderOutput::new();
+    if labels.len() < 2 || labels.len() != colors.len() {
+        return output;
+    }
+    let fs = theme.label_font_size();
+    let swatch = 10.0;
+    let gap = 6.0;
+    let item_gap = 14.0;
+    // 从右缘向左排布(与标题共存时互不侵占 — 标题居中,图例贴右)
+    let mut x = plot_area.x + plot_area.width;
+    let y = plot_area.y - 10.0;
+    for (label, color) in labels.iter().zip(colors.iter()).rev() {
+        let label_w = label.chars().count() as f64 * fs * 0.6;
+        let item_w = swatch + gap + label_w;
+        x -= item_w;
+        if x < plot_area.x {
+            break; // 空间耗尽,丢弃更早的条目
+        }
+        output.add_command(DrawCmd::Rect {
+            x,
+            y: y - swatch,
+            width: swatch,
+            height: swatch,
+            fill: Some(FillStyle::Color(color.clone())),
+            stroke: None,
+            corner_radius: Some(2.0),
+            corner_radii: None,
+            id: None,
+        });
+        output.add_command(DrawCmd::Text {
+            x: x + swatch + gap,
+            y: y - swatch / 2.0,
+            content: label.clone(),
+            style: TextStyle::new()
+                .with_font_size(fs)
+                .with_font_family(theme.font_family())
+                .with_fill(FillStyle::Color(theme.foreground_color().to_string())),
+            anchor: TextAnchor::Start,
+            baseline: TextBaseline::Middle,
+        });
+        x -= item_gap;
+    }
     output
 }

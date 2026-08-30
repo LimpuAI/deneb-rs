@@ -304,7 +304,9 @@ mod tests {
             fill: Some(FillStyle::Color("#fff".to_string())),
             stroke: None,
             corner_radius: None,
-        }]);
+            corner_radii: None,
+            id: None,
+}]);
 
         layer.update_commands(commands);
         assert!(layer.dirty);
@@ -356,7 +358,8 @@ mod tests {
             r: 5.0,
             fill: None,
             stroke: None,
-        }]);
+            id: None,
+}]);
 
         layers.update_layer(LayerKind::Data, commands);
 
@@ -416,7 +419,9 @@ mod tests {
             fill: None,
             stroke: None,
             corner_radius: None,
-        }]);
+            corner_radii: None,
+            id: None,
+}]);
 
         layers.update_layer(LayerKind::Data, commands);
         layers.mark_all_clean();

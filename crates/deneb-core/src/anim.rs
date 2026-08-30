@@ -4,6 +4,9 @@
 //! (柱高生长、stagger 级联、高亮/置灰过渡)。Tier 2 参数动画见 WIT anim-desc
 //! (宿主本地插值,不经此模块)。
 
+use crate::instruction::DrawCmd;
+use crate::style::FillStyle;
+
 /// 缓动函数
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Easing {
@@ -95,8 +98,10 @@ pub struct ChartAnim {
     pub outline_color: String,
     /// 选中项 outline 宽度(逻辑像素)
     pub outline_width: f64,
-    /// hover 项提亮幅度(0-1,向白色混合的比例)
+    /// hover 项提亮幅度(0-1,混合比例)
     pub hover_boost: f64,
+    /// hover 提亮基准色(theme.hover_color 语义色通道;None 时退化为向白混合近似)
+    pub hover_color: Option<String>,
 }
 
 impl ChartAnim {
@@ -115,6 +120,7 @@ impl ChartAnim {
             outline_color: "#333333".to_string(),
             outline_width: 1.5,
             hover_boost: 0.08,
+            hover_color: None,
         }
     }
 
@@ -192,6 +198,74 @@ impl ChartAnim {
         }
         let e = self.easing.apply(self.state_t.clamp(0.0, 1.0));
         lerp(self.dim_from, target, e)
+    }
+
+    /// hover 提亮:theme.hover_color 语义色为基准时向其混合,否则保持向白混合
+    /// 的近似(与 Bar 既有 lighten 行为一致 — 回归锁定)。
+    pub fn hover_brighten(&self, color: &str) -> String {
+        match &self.hover_color {
+            Some(base) => crate::color::mix_toward(color, base, self.hover_boost),
+            None => crate::color::lighten(color, self.hover_boost),
+        }
+    }
+
+    /// 状态过渡置灰强度(显式 state_t 重载)— [`MarkAnim::apply_state`] 的
+    /// 插值入口,与会话层传入的过渡相位解耦。
+    pub fn dim_factor_at(&self, state_t: f64) -> f64 {
+        let target = if self.state.has_selection() {
+            self.dim_alpha
+        } else {
+            1.0
+        };
+        if self.disable {
+            return target;
+        }
+        let e = self.easing.apply(state_t.clamp(0.0, 1.0));
+        lerp(self.dim_from, target, e)
+    }
+}
+
+/// mark 级入场/状态动画钩子(15 种 mark 各自实现)
+///
+/// 输入为 Data 层语义指令列表(`DrawCmd::id` = 所属 hit-region index),
+/// 实现按 mark 语义对指令做几何/颜色插值 — 会话层在静态渲染结果之上调度,
+/// 渲染器本体保持无动画的稳态职责。Bar 为既有参考实现:其 Tier 1 动画在
+/// 渲染器内联完成(精确基线生长语义),trait 侧为回归锁定的直通实现。
+pub trait MarkAnim {
+    /// 入场:per-item 进度采样(t ∈ [0,1])应用到数据层指令。
+    ///
+    /// 约定:t ≥ 1 或 `anim.disable` 时必须完全无操作(稳态直通)。
+    fn apply_enter(cmds: &mut Vec<DrawCmd>, t: f64, anim: &ChartAnim);
+
+    /// 状态过渡:hover/选中/置灰插值(state_t ∈ [0,1])。
+    ///
+    /// 约定:按 `DrawCmd::id` 关联命中区;无 id 的指令(系列级路径等)不参与。
+    fn apply_state(cmds: &mut Vec<DrawCmd>, state: &InteractionState, state_t: f64, anim: &ChartAnim);
+}
+
+/// 对 FillStyle 应用 hover 提亮(纯色直变换;渐变逐 stop — 提亮语义保持)
+pub fn brighten_fill(fill: &mut FillStyle, anim: &ChartAnim) {
+    match fill {
+        FillStyle::Color(c) => *c = anim.hover_brighten(c),
+        FillStyle::Gradient(g) => {
+            for stop in &mut g.stops {
+                stop.color = anim.hover_brighten(&stop.color);
+            }
+        }
+        FillStyle::None => {}
+    }
+}
+
+/// 对 FillStyle 应用 alpha 乘法(纯色直变换;渐变逐 stop)
+pub fn alpha_fill(fill: &mut FillStyle, alpha: f64) {
+    match fill {
+        FillStyle::Color(c) => *c = crate::color::with_alpha(c, alpha),
+        FillStyle::Gradient(g) => {
+            for stop in &mut g.stops {
+                stop.color = crate::color::with_alpha(&stop.color, alpha);
+            }
+        }
+        FillStyle::None => {}
     }
 }
 

@@ -39,14 +39,21 @@ fn wit_field_to_bindgen(v: WitFieldValue) -> dp::FieldValue {
     }
 }
 
-/// Arrow 物理类型 → deneb 语义类型
+/// Arrow 物理类型 / Parquet 物理类型 → deneb 语义类型
+///
+/// 两个 limpuai 解析器的 data_type 词汇不同:arrow-parser 用 Arrow 类型名
+/// ("Int64"),parquet-parser 用 parquet PhysicalType 的 Debug 输出("INT64")
+/// —— 两侧词汇都映射到同一语义空间。
 pub fn arrow_type_to_semantic(ty: &str) -> &'static str {
     match ty {
+        // Arrow 数值类型
         "Int8" | "Int16" | "Int32" | "Int64" | "UInt8" | "UInt16" | "UInt32" | "UInt64"
-        | "Float16" | "Float32" | "Float64" | "Decimal128" | "Decimal256" => "quantitative",
+        | "Float16" | "Float32" | "Float64" | "Decimal128" | "Decimal256"
+        // Parquet 物理数值类型(Debug 形式大写)
+        | "INT32" | "INT64" | "INT96" | "FLOAT" | "DOUBLE" => "quantitative",
         "Date32" | "Date64" | "Timestamp" | "Time32" | "Time64" | "Duration" => "temporal",
-        "Utf8" | "LargeUtf8" | "Binary" | "LargeBinary" => "nominal",
-        "Boolean" => "nominal",
+        "Utf8" | "LargeUtf8" | "Binary" | "LargeBinary" | "BOOLEAN" | "BYTE_ARRAY"
+        | "FIXED_LEN_BYTE_ARRAY" => "nominal",
         _ => "nominal",
     }
 }
@@ -142,6 +149,7 @@ pub fn bindgen_to_wit_theme(theme: cr::Theme) -> WitTheme {
         axis: theme.axis,
         title_color: theme.title_color,
         focus_color: theme.focus_color,
+        hover_color: theme.hover_color,
         font_family: theme.font_family,
         base_font_size: theme.base_font_size,
         title_font_size: theme.title_font_size,
@@ -194,6 +202,12 @@ fn wit_anim_to_bindgen(a: WitAnimDesc) -> cr::AnimDesc {
     cr::AnimDesc {
         property: match a.property {
             WitAnimProperty::Opacity => cw::AnimProperty::Opacity,
+            WitAnimProperty::TranslateX => cw::AnimProperty::TranslateX,
+            WitAnimProperty::TranslateY => cw::AnimProperty::TranslateY,
+            WitAnimProperty::Scale => cw::AnimProperty::Scale,
+            WitAnimProperty::Rotate => cw::AnimProperty::Rotate,
+            WitAnimProperty::StrokeWidth => cw::AnimProperty::StrokeWidth,
+            WitAnimProperty::Color => cw::AnimProperty::Color,
         },
         keyframes: a
             .keyframes
@@ -207,6 +221,7 @@ fn wit_anim_to_bindgen(a: WitAnimDesc) -> cr::AnimDesc {
             WitLoopMode::Loop => cw::LoopMode::Loop,
             WitLoopMode::PingPong => cw::LoopMode::PingPong,
         },
+        alt_color: a.alt_color,
     }
 }
 
@@ -218,14 +233,30 @@ fn wit_draw_cmd_to_bindgen(c: WitDrawCmd) -> cr::DrawCmd {
         stroke: c.stroke.map(wit_paint_to_bindgen),
         stroke_width: c.stroke_width,
         corner_radius: c.corner_radius,
+        corner_radii: c.corner_radii.map(|(tl, tr, br, bl)| (tl, tr, br, bl)),
+        dash: c.dash,
+        line_cap: c.line_cap,
+        shadow: c.shadow.map(|s| cw::ShadowDesc {
+            offset_x: s.offset_x,
+            offset_y: s.offset_y,
+            blur: s.blur,
+            spread: s.spread,
+            color: s.color,
+            alpha: s.alpha,
+            width: s.width,
+            height: s.height,
+            rotation: s.rotation,
+        }),
         text_content: c.text_content,
         font: c.font.map(|f| cw::FontDesc {
             family: f.family,
             weight: f.weight,
             italic: f.italic,
+            features: f.features,
         }),
         group_depth: c.group_depth,
-        anim: c.anim.map(wit_anim_to_bindgen),
+        id: c.id,
+        anims: c.anims.into_iter().map(wit_anim_to_bindgen).collect(),
     }
 }
 
@@ -238,5 +269,9 @@ pub fn wit_hit_region_to_bindgen(r: WitHitRegion) -> cr::HitRegion {
         bounds_w: r.bounds_w,
         bounds_h: r.bounds_h,
         datum: r.datum.into_iter().map(wit_field_to_bindgen).collect(),
+        hover: r.hover.map(|h| cw::HoverEffect {
+            kind: h.kind,
+            params: h.params,
+        }),
     }
 }

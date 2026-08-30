@@ -264,6 +264,7 @@ mod tests {
                 bounds_w: 100.0,
                 bounds_h: 50.0,
                 datum: vec![],
+                hover: None,
             },
         ];
 

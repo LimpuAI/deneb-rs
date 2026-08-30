@@ -68,7 +68,8 @@ impl ChordChart {
                 end_angle: std::f64::consts::TAU,
                 fill: Some(FillStyle::Color(theme.series_color(0).to_string())),
                 stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
-            });
+                id: None,
+});
 
             // 标签
             let label_style = TextStyle::new()
@@ -317,7 +318,10 @@ impl ChordChart {
                 segments,
                 fill: Some(FillStyle::Color(fill_color)),
                 stroke: Some(StrokeStyle::Color(stroke_color)),
-            });
+                dash: None,
+                line_cap: None,
+                id: None,
+});
         }
 
         // 画弧段（节点）—— 环形段，不是扇形
@@ -347,7 +351,10 @@ impl ChordChart {
                 segments,
                 fill: Some(FillStyle::Color(color.clone())),
                 stroke: Some(StrokeStyle::Color(theme.foreground_color().to_string())),
-            });
+                dash: None,
+                line_cap: None,
+                id: Some(node.index as u32),
+});
 
             // 标签：弧段中点外侧
             let mid_angle = (node.start_angle + node.end_angle) / 2.0;
@@ -379,7 +386,8 @@ impl ChordChart {
                 None,
                 bbox,
                 vec![FieldValue::Text(categories.get(node.index).cloned().unwrap_or_default())],
-            );
+            )
+            .with_hover(HoverEffect::brighten(0.08));
             hit_regions.push(region);
         }
 

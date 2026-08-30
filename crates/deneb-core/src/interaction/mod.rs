@@ -68,6 +68,38 @@ impl BoundingBox {
     }
 }
 
+/// 声明式 hover 效果(canvas@2.0.0 hit-region.hover)
+///
+/// 提供方声明命中区的 hover 视觉语义,宿主对 `draw-cmd.id == region.index`
+/// 的指令采样应用 — 与 set-state(Tier 1 过渡)并存的可选声明式路径,零 wasm 调用。
+#[derive(Clone, Debug, PartialEq)]
+pub struct HoverEffect {
+    /// "brighten"(params[0]=幅度 0-1)| "scale"(params[0]=倍率增量)
+    /// | "lift"(params[0]=上移 px)| "outline"(params[0]=描边宽)
+    /// | "glow"(params[0]=辉光强度)
+    pub kind: String,
+    /// kind 语义参数;时长固定走宿主 hover 过渡档(150ms)
+    pub params: Vec<f64>,
+}
+
+impl HoverEffect {
+    /// brighten:params[0]=提亮幅度 0-1(柱/点等实体 mark 的默认)
+    pub fn brighten(amount: f64) -> Self {
+        Self {
+            kind: "brighten".to_string(),
+            params: vec![amount],
+        }
+    }
+
+    /// scale:params[0]=倍率增量(扇形等极坐标 mark 的默认)
+    pub fn scale(delta: f64) -> Self {
+        Self {
+            kind: "scale".to_string(),
+            params: vec![delta],
+        }
+    }
+}
+
 /// 命中区域 — 每个数据点对应的可交互区域
 ///
 /// 存储数据点的几何位置和对应的数据值，用于交互检测。
@@ -81,10 +113,12 @@ pub struct HitRegion {
     pub bounds: BoundingBox,
     /// 对应的数据值（该行各列的值）
     pub data: Vec<FieldValue>,
+    /// 声明式 hover 效果(宿主对 draw-cmd.id == index 的指令采样渲染;None = 无)
+    pub hover: Option<HoverEffect>,
 }
 
 impl HitRegion {
-    /// 创建新的命中区域
+    /// 创建新的命中区域(无声明式 hover 效果)
     pub fn new(
         index: usize,
         series: Option<usize>,
@@ -96,7 +130,14 @@ impl HitRegion {
             series,
             bounds,
             data,
+            hover: None,
         }
+    }
+
+    /// 附着声明式 hover 效果(builder 风格)
+    pub fn with_hover(mut self, hover: HoverEffect) -> Self {
+        self.hover = Some(hover);
+        self
     }
 
     /// 判断点是否在命中区域内
