@@ -146,3 +146,19 @@ cargo clippy --workspace
 Licensed under the [MIT License](LICENSE).
 
 Copyright (c) 2026 StarEcho Pte. Ltd.
+
+## 打包（aixpack 标准插件包）
+
+宿主应用装载的标准插件包由 [aixpack](https://github.com/LimpuAI/aixpack)（LimpuAI 生态工具链，`cargo install --git https://github.com/LimpuAI/aixpack`）从本仓 `pack.toml` 产出：
+
+```bash
+aixpack --root <本仓> build       # wasip2 release 组件 → dist/staging/
+aixpack --root <本仓> pkg --zip   # dist/<author>--<name>/ + 标准包 zip（唯一顶层）
+aixpack --root <本仓> verify --wit-root <WIT路径>   --contracts-root <契约仓> --registry-root <登记处仓>
+```
+
+verify 三查：WIT 双侧一致（本仓 wit 副本 ↔ 契约权威副本）/ world ⊆ 扩展点登记处 / 包内哈希三方一致。
+
+快捷脚本：`scripts/verify-package.sh`（三查；兄弟仓同级布局下零参直跑——`CONTRACTS_ROOT`（兼容 `ECHODAWN_ROOT`）/ `AIXPACK_ROOT` / `REGISTRY_ROOT` 环境覆写仍可用）、`scripts/install-hooks.sh`（pre-commit 安装器）。（注：本仓曾长期位于 G:/code 导致兄弟探测失效，2026-09-10 归位 ../deneb-rs 后默认路径全通）
+
+工具链安装：`cargo install --git https://github.com/LimpuAI/aixpack`（安装后 `scripts/verify-package.sh` 自动优先 PATH；未安装时兜底兄弟 checkout 构建产物）。
