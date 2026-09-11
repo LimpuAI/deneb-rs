@@ -1,6 +1,6 @@
 //! deneb-wit-wasm: WASI Component Model 导出层(v2 — resource session 协议)
 //!
-//! 使用 wit-bindgen 0.57 从 world.wit 生成 guest 绑定,
+//! 使用 wit-bindgen 0.57 从 deneb-viz.wit 生成 guest 绑定,
 //! 将 deneb-wit 的功能导出为标准 WASI Component。
 //!
 //! v2:`chart` resource 有状态会话(constructor/update-data/resize/set-state/

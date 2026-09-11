@@ -14,7 +14,7 @@ pub mod session;
 pub use session::{ChartSession, render_mark_static, wit_theme_to_record};
 
 
-/// WIT 类型定义 — 与 world.wit 中的 record 一一对应(v2 resource session 协议)
+/// WIT 类型定义 — 与 deneb-viz.wit 中的 record 一一对应(v2 resource session 协议)
 pub mod wit_types {
 
     /// WIT 字段模式定义
