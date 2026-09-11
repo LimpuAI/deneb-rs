@@ -1,6 +1,6 @@
 # deneb 标准插件包打包描述（aixpack，见 https://github.com/LimpuAI/aixpack docs/plugin-package.md）。
 [pack]
-id = "linktime/deneb"
+id = "limpuai/deneb-rs"
 version = "0.1.0"
 world = "deneb:viz@4.0.0"
 domain_key = "chart-renderer"

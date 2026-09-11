@@ -13,7 +13,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["linktime <fankong>"]
 license = "MIT"
-repository = "https://github.com/linktime/deneb-rs"
+repository = "https://github.com/LimpuAI/deneb-rs"
 
 [workspace.dependencies]
 # Core dependencies
