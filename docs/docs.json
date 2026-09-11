@@ -63,7 +63,7 @@
   "navbar": {
     "primary": {
       "type": "github",
-      "href": "https://github.com/linktime/deneb-rs"
+      "href": "https://github.com/LimpuAI/deneb-rs"
     }
   }
 }
