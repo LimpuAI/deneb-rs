@@ -178,6 +178,23 @@ fn wit_layer_to_bindgen(l: WitLayer) -> cr::Layer {
         dirty: l.dirty,
         z_index: l.z_index,
         commands: l.commands.into_iter().map(wit_draw_cmd_to_bindgen).collect(),
+        opts: l.opts.map(wit_layer_opts_to_bindgen),
+    }
+}
+
+fn wit_layer_opts_to_bindgen(o: WitLayerOpts) -> cw::LayerOpts {
+    cw::LayerOpts {
+        opacity: o.opacity,
+        blend: o.blend.map(|b| match b.as_str() {
+            "normal" => cw::BlendMode::Normal,
+            "screen" => cw::BlendMode::Screen,
+            "lighter" => cw::BlendMode::Lighter,
+            "multiply" => cw::BlendMode::Multiply,
+            "overlay" => cw::BlendMode::Overlay,
+            "soft-light" => cw::BlendMode::SoftLight,
+            other => panic!("未知混合模式 `{other}`（canvas@2.1.0 闭集漂移）"),
+        }),
+        clip: o.clip,
     }
 }
 
@@ -257,6 +274,9 @@ fn wit_draw_cmd_to_bindgen(c: WitDrawCmd) -> cr::DrawCmd {
         group_depth: c.group_depth,
         id: c.id,
         anims: c.anims.into_iter().map(wit_anim_to_bindgen).collect(),
+        fill_gradient_along: c
+            .fill_gradient_along
+            .map(|stops| stops.into_iter().map(|g| cw::GradientStop { pos: g.pos, color: g.color }).collect()),
     }
 }
 

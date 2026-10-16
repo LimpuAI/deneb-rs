@@ -353,6 +353,7 @@ fn bg_to_wit_layer(l: BgLayer) -> WitLayer {
         dirty: l.dirty,
         z_index: l.z_index,
         commands: l.commands.into_iter().map(bg_to_wit_draw_cmd).collect(),
+        opts: None,
     }
 }
 
@@ -393,6 +394,7 @@ fn bg_to_wit_draw_cmd(c: BgDrawCmd) -> WitDrawCmd {
         group_depth: c.group_depth,
         id: None,
         anims: Vec::new(), // demo 渲染不消费 Tier 2(宿主 echodawn 侧消费)
+        fill_gradient_along: None,
     }
 }
 
