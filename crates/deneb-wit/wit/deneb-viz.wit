@@ -1,7 +1,7 @@
 /// deneb-viz WIT world definition (v4 — shared drawing vocabulary)
 ///
-/// v4 变更(相对 v3,canvas@2.0.0 窗口):
-/// - 绘制词汇表升级至 `echodawn:canvas@2.0.0/draw`(Tier2 七通道/多轨道/
+/// v4 变更(相对 v3,canvas@2.1.0 窗口):
+/// - 绘制词汇表升级至 `echodawn:canvas@2.1.0/draw`(Tier2 七通道/多轨道/
 ///   dash/line-cap/per-corner/font features/命令 id/hover-effect)
 /// - hit-region 增 `hover: option<hover-effect>`(声明式 hover,宿主渲染)
 /// - theme 增 `hover-color`(guest 侧 hover 提亮的语义色通道,取代宿主
@@ -48,8 +48,8 @@ interface data-parser {
 
 interface chart-renderer {
     use data-parser.{field-value};
-    // 共享绘制词汇表 —— v4 起自 echodawn:canvas/draw@2.0.0 引回(定义归 echodawn 持有,双侧同步)
-    use echodawn:canvas/draw@2.0.0.{anim-property, loop-mode, keyframe, anim-desc, font-desc, gradient-stop, linear-gradient, paint, draw-cmd, layer, hover-effect};
+    // 共享绘制词汇表 —— v4 起自 echodawn:canvas/draw@2.1.0 引回(定义归 echodawn 持有,双侧同步)
+    use echodawn:canvas/draw@2.1.0.{anim-property, loop-mode, keyframe, anim-desc, font-desc, gradient-stop, linear-gradient, paint, draw-cmd, layer, hover-effect};
 
     // ---- 命中区(宿主侧 AABB,datum 供 tooltip) ----
 

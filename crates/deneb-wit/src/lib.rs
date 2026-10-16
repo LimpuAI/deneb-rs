@@ -166,6 +166,9 @@ pub mod wit_types {
         pub id: Option<u32>,
         /// Tier 2 多轨道动画附着(宿主插值,零 wasm 调用)
         pub anims: Vec<WitAnimDesc>,
+        /// canvas@2.1.0:沿路径弧长渐变填充(宿主分段近似渲染;None = 无)
+        #[serde(default)]
+        pub fill_gradient_along: Option<Vec<WitGradientStop>>,
     }
 
     /// WIT 声明式 hover 效果(宿主对 draw-cmd.id == region.index 的指令采样渲染)
@@ -193,6 +196,17 @@ pub mod wit_types {
         pub hover: Option<WitHoverEffect>,
     }
 
+    /// WIT 层级绘制选项(canvas@2.1.0;缺省全 None = 普通层)
+    #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct WitLayerOpts {
+        /// 层不透明度(0-1;None = 1)
+        pub opacity: Option<f64>,
+        /// 层混合模式("normal" | "multiply" | "screen";offscreen 合成落地前宿主 warn + normal 渲染)
+        pub blend: Option<String>,
+        /// 层裁剪 [x, y, w, h](px;None = 不裁剪)
+        pub clip: Option<(f64, f64, f64, f64)>,
+    }
+
     /// WIT 渲染层定义(v2:hit-regions 移出层,不再每层重复)
     #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
     pub struct WitLayer {
@@ -200,6 +214,9 @@ pub mod wit_types {
         pub dirty: bool,
         pub z_index: u32,
         pub commands: Vec<WitDrawCmd>,
+        /// canvas@2.1.0:层级绘制选项(None = 普通层)
+        #[serde(default)]
+        pub opts: Option<WitLayerOpts>,
     }
 
     /// WIT 渲染结果定义
@@ -571,6 +588,7 @@ pub mod convert {
                     group_depth: depth,
                     id,
                     anims: Vec::new(),
+                    fill_gradient_along: None,
                 }]
             }
             DrawCmd::Circle { cx, cy, r, fill, stroke, id } => {
@@ -591,6 +609,7 @@ pub mod convert {
                     group_depth: depth,
                     id,
                     anims: Vec::new(),
+                    fill_gradient_along: None,
                 }]
             }
             DrawCmd::Arc { cx, cy, r, start_angle, end_angle, fill, stroke, id } => {
@@ -611,6 +630,7 @@ pub mod convert {
                     group_depth: depth,
                     id,
                     anims: Vec::new(),
+                    fill_gradient_along: None,
                 }]
             }
             DrawCmd::Text { x, y, content, style, anchor, baseline } => {
@@ -642,6 +662,7 @@ pub mod convert {
                     group_depth: depth,
                     id: None,
                     anims: Vec::new(),
+                    fill_gradient_along: None,
                 }]
             }
             DrawCmd::Path { segments, fill, stroke, dash, line_cap, id } => {
@@ -684,6 +705,7 @@ pub mod convert {
                     group_depth: depth,
                     id,
                     anims: Vec::new(),
+                    fill_gradient_along: None,
                 }]
             }
             DrawCmd::Group { label: _, items } => {
@@ -736,6 +758,7 @@ pub mod convert {
             dirty,
             z_index: layer.z_index,
             commands,
+            opts: None,
         }
     }
 
